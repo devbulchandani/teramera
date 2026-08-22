@@ -13,8 +13,8 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
-/** Point this at your deployed backend; 10.0.2.2 is the emulator's host loopback. */
-const val DEFAULT_BASE_URL = "http://10.0.2.2:8080/"
+/** Production backend — Cloudflare Worker + D1. 10.0.2.2 is the emulator's host loopback (local dev). */
+const val DEFAULT_BASE_URL = "https://teramera-api.devbulchandani876.workers.dev/"
 
 @Module
 @InstallIn(SingletonComponent::class)

@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "teramera-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "teramera",
+      "database_id": "26878f25-a063-43af-a925-cfd631369ef0"
+    }
+  ],
+  "vars": {
+    "EXPOSE_DEV_OTP": "true"
+  }
+}
