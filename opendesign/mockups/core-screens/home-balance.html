@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera — Home / Balances</title>
+<link rel="stylesheet" href="../../design-systems/teramera-product/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: oklch(0.88 0.01 80);
+    font-family: var(--font-ui);
+    color: var(--ink-1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-6);
+    padding: var(--sp-8) var(--sp-4);
+    min-height: 100vh;
+  }
+
+  .stage-head { text-align: center; }
+  .stage-head h1 { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+  .variant-toggle {
+    margin-top: var(--sp-3);
+    display: inline-flex;
+    background: var(--bg-3);
+    border-radius: var(--r-pill);
+    padding: 4px;
+    gap: 2px;
+  }
+  .variant-toggle button {
+    border: 0;
+    background: transparent;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-2);
+    padding: 8px 18px;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: all var(--t-fast);
+    min-height: 36px;
+  }
+  .variant-toggle button.active {
+    background: var(--bg-1);
+    color: var(--ink-1);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* ---- phone frame ---- */
+  .phone {
+    width: 390px;
+    height: 844px;
+    background: var(--bg-1);
+    border-radius: 44px;
+    box-shadow: 0 24px 60px oklch(0.235 0.02 60 / 0.28), 0 0 0 10px oklch(0.2 0.01 60), 0 0 0 12px oklch(0.35 0.01 60);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 28px 6px;
+    font-size: 14px; font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  .screen { flex: 1; overflow-y: auto; padding: var(--sp-4) var(--sp-5) 120px; }
+
+  /* ---- top bar ---- */
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-5); }
+  .greeting .hi { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .greeting .name { font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.15; }
+  .avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    background:
+      linear-gradient(105deg,
+        var(--accent-1) 0 50%,
+        color-mix(in oklch, var(--accent-2) 30%, var(--bg-3)) 50%);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 700; font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  /* ---- hero balance card (shared) ---- */
+  .hero-card {
+    background: var(--ink-1);
+    border-radius: var(--r-lg);
+    padding: var(--sp-5) var(--sp-5) var(--sp-4);
+    color: oklch(0.945 0.008 85);
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-card::after {
+    content: "";
+    position: absolute; right: -40px; top: -40px;
+    width: 160px; height: 160px; border-radius: 50%;
+    border: 22px solid oklch(0.72 0.11 195 / 0.25);
+  }
+  .hero-label { font-size: 13px; font-weight: 500; opacity: 0.7; }
+  .hero-amount {
+    font-family: var(--font-display);
+    font-size: 40px; font-weight: 800; line-height: 1.1;
+    font-feature-settings: "tnum";
+    margin-top: 2px;
+  }
+  .hero-amount .rupee { font-size: 26px; font-weight: 700; margin-right: 2px; opacity: 0.85; }
+  .hero-chips { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); position: relative; z-index: 1; }
+  .chip {
+    font-size: 12.5px; font-weight: 600;
+    padding: 7px 12px; border-radius: var(--r-pill);
+    font-feature-settings: "tnum";
+    display: flex; align-items: center; gap: 6px;
+  }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .chip.pos { background: oklch(0.74 0.11 160 / 0.22); color: oklch(0.84 0.09 160); }
+  .chip.pos .dot { background: oklch(0.78 0.11 160); }
+  .chip.neg { background: oklch(0.70 0.15 30 / 0.20); color: oklch(0.83 0.10 32); }
+  .chip.neg .dot { background: oklch(0.73 0.14 30); }
+
+  /* ================= VARIANT A — Ledger ================= */
+  .seg-tabs {
+    display: flex; background: var(--bg-3); border-radius: var(--r-pill);
+    padding: 4px; margin-top: var(--sp-5); gap: 2px;
+  }
+  .seg-tabs button {
+    flex: 1; border: 0; background: transparent; cursor: pointer;
+    font-family: var(--font-ui); font-size: 13.5px; font-weight: 600;
+    color: var(--ink-2); padding: 9px 0; border-radius: var(--r-pill);
+    min-height: 44px; transition: all var(--t-fast);
+  }
+  .seg-tabs button.active { background: var(--bg-1); color: var(--ink-1); box-shadow: var(--shadow-card); }
+
+  .section-label {
+    font-size: 13px; font-weight: 700; color: var(--ink-2);
+    text-transform: uppercase; letter-spacing: 0.7px;
+    margin: var(--sp-6) 0 var(--sp-2);
+  }
+  .row-list { background: var(--bg-2); border-radius: var(--r-md); overflow: hidden; }
+  .balance-row {
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: 14px var(--sp-4);
+    min-height: 64px;
+    cursor: pointer;
+    transition: background var(--t-fast);
+  }
+  .balance-row:hover { background: var(--bg-3); }
+  .balance-row + .balance-row { border-top: 1px solid var(--border-subtle); }
+  .b-avatar {
+    width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: var(--ink-1);
+  }
+  .b-avatar.f1 { background: linear-gradient(105deg, var(--accent-1) 0 50%, var(--accent-1-soft) 50%); color: white; }
+  .b-avatar.f2 { background: linear-gradient(105deg, var(--accent-2) 0 50%, var(--accent-2-soft) 50%); color: white; }
+  .b-avatar.f3 { background: linear-gradient(105deg, oklch(0.55 0.11 200 / 0.75) 0 50%, var(--accent-1-soft) 50%); }
+  .b-avatar.g1 { background: linear-gradient(105deg, var(--accent-2) 0 50%, var(--accent-1-soft) 50%); color: white; }
+  .b-main { flex: 1; min-width: 0; }
+  .b-name { font-size: 15px; font-weight: 600; }
+  .b-sub { font-size: 13px; color: var(--ink-3); margin-top: 1px; }
+  .b-amt { text-align: right; font-feature-settings: "tnum"; }
+  .b-val { font-size: 15.5px; font-weight: 700; }
+  .b-val.pos { color: var(--pos); }
+  .b-val.neg { color: var(--neg); }
+  .b-cap { font-size: var(--s-cap); color: var(--ink-3); font-weight: 500; margin-top: 1px; }
+
+  /* ================= VARIANT B — Split ================= */
+  .settle-strip {
+    margin-top: var(--sp-4);
+    background: var(--accent-1-soft);
+    border-radius: var(--r-md);
+    padding: var(--sp-4);
+    display: flex; align-items: center; gap: var(--sp-3);
+    cursor: pointer;
+    transition: transform var(--t-fast);
+  }
+  .settle-strip:active { transform: scale(0.98); }
+  .settle-icon {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--accent-1); color: white;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .settle-copy { flex: 1; }
+  .settle-copy .t { font-size: 14px; font-weight: 700; }
+  .settle-copy .s { font-size: 12.5px; color: var(--ink-2); margin-top: 1px; }
+  .split-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); margin-top: var(--sp-4); }
+  .col-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 var(--sp-1) var(--sp-2); }
+  .col-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; }
+  .col-title.mera { color: var(--accent-1); }
+  .col-title.tere { color: var(--accent-2); }
+  .col-sum { font-size: 13px; font-weight: 700; font-feature-settings: "tnum"; color: var(--ink-2); }
+  .mini-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .mini-card {
+    background: var(--bg-2); border-radius: var(--r-md);
+    padding: var(--sp-3) var(--sp-4);
+    display: flex; align-items: center; gap: var(--sp-3);
+    cursor: pointer; transition: transform var(--t-fast);
+    border: 1px solid transparent;
+  }
+  .mini-card:hover { transform: translateY(-1px); border-color: var(--border-subtle); }
+  .mc-body { flex: 1; min-width: 0; }
+  .mc-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mc-bar { height: 4px; border-radius: 2px; background: var(--bg-3); margin-top: 7px; overflow: hidden; }
+  .mc-fill { height: 100%; border-radius: 2px; }
+  .mc-amt { font-size: 14px; font-weight: 700; font-feature-settings: "tnum"; flex-shrink: 0; }
+  .mc-amt.pos { color: var(--pos); }
+  .mc-amt.neg { color: var(--neg); }
+
+  /* ---- FAB & bottom nav ---- */
+  .fab {
+    position: absolute; right: var(--sp-5); bottom: 108px;
+    background: var(--accent-1); color: white;
+    border: 0; border-radius: 18px;
+    padding: 16px 22px;
+    font-family: var(--font-ui); font-size: 15px; font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+    box-shadow: var(--shadow-float);
+    cursor: pointer; transition: transform var(--t-fast);
+  }
+  .fab:active { transform: scale(0.96); }
+  .bottom-nav {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: color-mix(in oklch, var(--bg-2) 92%, transparent);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border-subtle);
+    display: flex; padding: 10px var(--sp-4) 26px;
+  }
+  .nav-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-size: 11px; font-weight: 600; color: var(--ink-3);
+    background: none; border: 0; cursor: pointer; padding: 6px 0;
+  }
+  .nav-item.active { color: var(--accent-1); }
+  .nav-item svg { width: 24px; height: 24px; }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="stage-head">
+  <h1>teramera · Home</h1>
+  <div class="variant-toggle" role="tablist">
+    <button id="btnA" class="active" onclick="show('A')">A — Ledger ✓</button>
+    <button id="btnB" onclick="show('B')">B — Split view (archived)</button>
+  </div>
+</div>
+
+<!-- ============ VARIANT A ============ -->
+<div class="phone" id="phoneA">
+  <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+  <div class="screen">
+    <div class="topbar">
+      <div class="greeting">
+        <div class="hi">Good morning</div>
+        <div class="name">Dev</div>
+      </div>
+      <div class="avatar">D</div>
+    </div>
+
+    <div class="hero-card">
+      <div class="hero-label">You are owed in total</div>
+      <div class="hero-amount"><span class="rupee">₹</span>4,830</div>
+      <div class="hero-chips">
+        <span class="chip pos"><span class="dot"></span>You're owed ₹5,750</span>
+        <span class="chip neg"><span class="dot"></span>You owe ₹920</span>
+      </div>
+    </div>
+
+    <div class="seg-tabs">
+      <button class="active">Friends</button>
+      <button>Groups</button>
+      <button>All</button>
+    </div>
+
+    <div class="section-label">Owes you</div>
+    <div class="row-list">
+      <div class="balance-row">
+        <div class="b-avatar f1">PS</div>
+        <div class="b-main">
+          <div class="b-name">Priya Sharma</div>
+          <div class="b-sub">Goa Trip · 4 members</div>
+        </div>
+        <div class="b-amt">
+          <div class="b-val pos">₹3,120</div>
+          <div class="b-cap">you're owed</div>
+        </div>
+      </div>
+      <div class="balance-row">
+        <div class="b-avatar f2">AM</div>
+        <div class="b-main">
+          <div class="b-name">Arjun Mehta</div>
+          <div class="b-sub">Flat 402 · 3 members</div>
+        </div>
+        <div class="b-amt">
+          <div class="b-val pos">₹1,450</div>
+          <div class="b-cap">you're owed</div>
+        </div>
+      </div>
+      <div class="balance-row">
+        <div class="b-avatar f1">SK</div>
+        <div class="b-main">
+          <div class="b-name">Sneha Kulkarni</div>
+          <div class="b-sub">Goa Trip · 4 members</div>
+        </div>
+        <div class="b-amt">
+          <div class="b-val pos">₹1,180</div>
+          <div class="b-cap">you're owed</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">You owe</div>
+    <div class="row-list">
+      <div class="balance-row">
+        <div class="b-avatar f2">KS</div>
+        <div class="b-main">
+          <div class="b-name">Kabir Shah</div>
+          <div class="b-sub">Last settled 12 Aug</div>
+        </div>
+        <div class="b-amt">
+          <div class="b-val neg">₹920</div>
+          <div class="b-cap">you owe</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="fab">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="20" height="20"><path d="M12 5v14M5 12h14"/></svg>
+    Add expense
+  </button>
+  <nav class="bottom-nav">
+    <button class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-6h6v6"/></svg>
+      Home
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.5 0 4.5 2 4.5 4.5"/></svg>
+      Groups
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      Activity
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="10" width="18" height="7" rx="3"/><path d="M7 15h.01M17 10V7a5 5 0 0 0-10 0v3"/></svg>
+      Settle
+    </button>
+  </nav>
+</div>
+
+<!-- ============ VARIANT B ============ -->
+<div class="phone" id="phoneB" hidden>
+  <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+  <div class="screen">
+    <div class="topbar">
+      <div class="greeting">
+        <div class="hi">Good morning</div>
+        <div class="name">Dev</div>
+      </div>
+      <div class="avatar">D</div>
+    </div>
+
+    <div class="hero-card">
+      <div class="hero-label">Your net balance</div>
+      <div class="hero-amount"><span class="rupee">₹</span>+4,830</div>
+      <div class="hero-chips">
+        <span class="chip pos"><span class="dot"></span>3 people owe you ₹5,750</span>
+        <span class="chip neg"><span class="dot"></span>You owe 1 person ₹920</span>
+      </div>
+    </div>
+
+    <div class="settle-strip">
+      <div class="settle-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="19" height="19"><path d="M7 17 17 7M9 7h8v8"/></svg>
+      </div>
+      <div class="settle-copy">
+        <div class="t">3 payments clear everything</div>
+        <div class="s">Tap to see the simplest path</div>
+      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="18" height="18" style="color:var(--ink-2)"><path d="m9 6 6 6-6 6"/></svg>
+    </div>
+
+    <!-- tere | mera mirrored columns -->
+    <div class="split-cols">
+      <div>
+        <div class="col-head">
+          <span class="col-title mera">mera</span>
+          <span class="col-sum">₹5,750 in</span>
+        </div>
+        <div class="mini-cards">
+          <div class="mini-card">
+            <div class="b-avatar f1">PS</div>
+            <div class="mc-body">
+              <div class="mc-name">Priya S.</div>
+              <div class="mc-bar"><div class="mc-fill" style="width:82%;background:var(--accent-1)"></div></div>
+            </div>
+            <div class="mc-amt pos">₹3,120</div>
+          </div>
+          <div class="mini-card">
+            <div class="b-avatar f2">AM</div>
+            <div class="mc-body">
+              <div class="mc-name">Arjun M.</div>
+              <div class="mc-bar"><div class="mc-fill" style="width:48%;background:var(--accent-1)"></div></div>
+            </div>
+            <div class="mc-amt pos">₹1,450</div>
+          </div>
+          <div class="mini-card">
+            <div class="b-avatar f3">SK</div>
+            <div class="mc-body">
+              <div class="mc-name">Sneha K.</div>
+              <div class="mc-bar"><div class="mc-fill" style="width:34%;background:var(--accent-1)"></div></div>
+            </div>
+            <div class="mc-amt pos">₹1,180</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="col-head">
+          <span class="col-title tere">tere</span>
+          <span class="col-sum">₹920 out</span>
+        </div>
+        <div class="mini-cards">
+          <div class="mini-card">
+            <div class="b-avatar f2">KS</div>
+            <div class="mc-body">
+              <div class="mc-name">Kabir S.</div>
+              <div class="mc-bar"><div class="mc-fill" style="width:27%;background:var(--accent-2)"></div></div>
+            </div>
+            <div class="mc-amt neg">₹920</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">Recent activity</div>
+    <div class="row-list">
+      <div class="balance-row">
+        <div class="b-avatar g1">GT</div>
+        <div class="b-main">
+          <div class="b-name">Beach shack dinner</div>
+          <div class="b-sub">Goa Trip · Yesterday</div>
+        </div>
+        <div class="b-amt">
+          <div class="b-val">₹4,480</div>
+          <div class="b-cap">your share ₹896</div>
+        </div>
+      </div>
+      <div class="balance-row">
+        <div class="b-avatar g1">GT</div>
+        <div class="b-main">
+          <div class="b-name">Scooter rentals</div>
+          <div class="b-sub">Goa Trip · Yesterday</div>
+        </div>
+        <div class="b-amt">
+          <div class="b-val">₹2,000</div>
+          <div class="b-cap">your share ₹500</div>
+        </div>
+      </div>
+      <div class="balance-row">
+        <div class="b-avatar f2">AM</div>
+        <div class="b-main">
+          <div class="b-name">Internet bill</div>
+          <div class="b-sub">Flat 402 · 20 Aug</div>
+        </div>
+        <div class="b-amt">
+          <div class="b-val">₹1,899</div>
+          <div class="b-cap">your share ₹633</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="fab">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="20" height="20"><path d="M12 5v14M5 12h14"/></svg>
+    Add expense
+  </button>
+  <nav class="bottom-nav">
+    <button class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-6h6v6"/></svg>
+      Home
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.5 0 4.5 2 4.5 4.5"/></svg>
+      Groups
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      Activity
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="10" width="18" height="7" rx="3"/><path d="M7 15h.01M17 10V7a5 5 0 0 0-10 0v3"/></svg>
+      Settle
+    </button>
+  </nav>
+</div>
+
+<script>
+  function show(v) {
+    document.getElementById("phoneA").hidden = v !== "A";
+    document.getElementById("phoneB").hidden = v !== "B";
+    document.getElementById("btnA").classList.toggle("active", v === "A");
+    document.getElementById("btnB").classList.toggle("active", v === "B");
+  }
+</script>
+</body>
+</html>

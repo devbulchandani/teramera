@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: teramera-backend
+  autoconfigure:
+    # We manage SQL execution ourselves (D1 HTTP / local SQLite); no pooled DataSource.
+    exclude: org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+
+app:
+  # HS256 secret — override JWT_SECRET in any real deployment
+  jwt-secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789abcdef0123456789abcdef}
+  access-ttl-minutes: 15
+  refresh-ttl-days: 30
+  google-client-id: ${GOOGLE_CLIENT_ID:}
+  expose-dev-otp: true
+  db-mode: ${DB_MODE:local} # local (SQLite file) | d1 (Cloudflare D1 over HTTP)
+  sqlite-path: ${SQLITE_PATH:./data/teramera.db}
+  cloudflare:
+    account-id: ${CF_ACCOUNT_ID:}
+    database-id: ${CF_D1_DATABASE_ID:}
+    api-token: ${CF_API_TOKEN:}

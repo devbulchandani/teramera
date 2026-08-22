@@ -1,0 +1,98 @@
+/* teramera — product design tokens
+   Warm, clean, India-first. Teal primary + violet secondary.
+   Motif: tere | mera (yours/mine) — two-tone duality. */
+
+:root {
+  /* ---- raw: surfaces (warm) ---- */
+  --bg-1: oklch(0.982 0.007 85);      /* app background, cream white */
+  --bg-2: oklch(0.958 0.012 85);      /* raised surface / cards */
+  --bg-3: oklch(0.928 0.016 84);      /* pressed / recessed */
+  --ink-1: oklch(0.235 0.02 60);      /* primary text, warm near-black */
+  --ink-2: oklch(0.44 0.022 65);      /* secondary text */
+  --ink-3: oklch(0.60 0.018 70);      /* tertiary / captions */
+
+  /* ---- raw: accents (matched chroma & lightness) ---- */
+  --accent-1: oklch(0.55 0.11 200);   /* deep teal — "mera" side, primary actions */
+  --accent-1-soft: oklch(0.93 0.03 200);
+  --accent-2: oklch(0.55 0.12 305);   /* violet — "tere" side, secondary identity */
+  --accent-2-soft: oklch(0.93 0.03 305);
+
+  /* ---- raw: status ---- */
+  --pos: oklch(0.55 0.11 160);        /* owed to you */
+  --pos-soft: oklch(0.94 0.035 160);
+  --neg: oklch(0.56 0.17 30);         /* you owe */
+  --neg-soft: oklch(0.94 0.035 35);
+
+  /* ---- raw: borders ---- */
+  --border-subtle: oklch(0.90 0.014 80);
+  --border-strong: oklch(0.82 0.02 78);
+
+  /* ---- raw: type ---- */
+  --font-display: "Bricolage Grotesque", "Georgia", serif;
+  --font-ui: "Instrument Sans", "Helvetica Neue", sans-serif;
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+  --w-bold: 700;
+
+  --s-xs: 0.6875rem;   /* 11px micro-labels (nav, avatar tags) & captions over imagery only */
+  --s-cap: 0.75rem;    /* 12px row captions / metadata */
+  --s-sm: 0.8125rem;   /* 13px */
+  --s-base: 0.9375rem; /* 15px body on mobile */
+  --s-md: 1.0625rem;   /* 17px */
+  --s-lg: 1.375rem;    /* 22px section heads */
+  --s-xl: 1.75rem;     /* 28px money hero */
+  --s-xxl: 2.5rem;     /* 40px display moments */
+
+  /* ---- radii ---- */
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-pill: 999px;
+
+  /* ---- space scale (4pt) ---- */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+
+  /* ---- motion ---- */
+  --t-fast: 140ms cubic-bezier(0.3, 0, 0.2, 1);
+  --t-med: 260ms cubic-bezier(0.3, 0, 0.2, 1);
+  --t-spring: 380ms cubic-bezier(0.34, 1.3, 0.64, 1);
+
+  /* ---- shadows (warm, low) ---- */
+  --shadow-card: 0 1px 2px oklch(0.235 0.02 60 / 0.06), 0 4px 14px oklch(0.235 0.02 60 / 0.05);
+  --shadow-float: 0 6px 24px oklch(0.235 0.02 60 / 0.14);
+}
+
+/* semantic aliases */
+:root {
+  --h1: var(--font-display) var(--w-bold) var(--s-xxl)/1.05 var(--font-display);
+  --body: var(--w-regular) var(--s-base)/1.5 var(--font-ui);
+  --caption: var(--w-medium) var(--s-sm)/1.35 var(--font-ui);
+  --surface-primary: var(--bg-1);
+  --surface-raised: var(--bg-2);
+  --fg-primary: var(--ink-1);
+  --fg-secondary: var(--ink-2);
+}
+
+/* ---- dark theme (deep warm brown-black, not gray) ---- */
+[data-theme="dark"] {
+  --bg-1: oklch(0.21 0.015 60);
+  --bg-2: oklch(0.255 0.018 62);
+  --bg-3: oklch(0.30 0.02 64);
+  --ink-1: oklch(0.945 0.008 85);
+  --ink-2: oklch(0.78 0.012 75);
+  --ink-3: oklch(0.63 0.014 72);
+  --accent-1: oklch(0.72 0.11 195);
+  --accent-1-soft: oklch(0.32 0.05 200);
+  --accent-2: oklch(0.72 0.12 300);
+  --accent-2-soft: oklch(0.32 0.05 305);
+  --pos: oklch(0.74 0.11 160);
+  --pos-soft: oklch(0.31 0.05 165);
+  --neg: oklch(0.70 0.15 30);
+  --neg-soft: oklch(0.31 0.05 35);
+  --border-subtle: oklch(0.32 0.018 62);
+  --border-strong: oklch(0.42 0.02 62);
+  --shadow-card: none;
+  --shadow-float: 0 8px 28px oklch(0 0 0 / 0.4);
+}

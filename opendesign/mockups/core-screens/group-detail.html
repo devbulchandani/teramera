@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera — Group Detail</title>
+<link rel="stylesheet" href="../../design-systems/teramera-product/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: oklch(0.88 0.01 80);
+    font-family: var(--font-ui);
+    color: var(--ink-1);
+    display: flex; flex-direction: column; align-items: center;
+    gap: var(--sp-5);
+    padding: var(--sp-8) var(--sp-4);
+    min-height: 100vh;
+  }
+  .stage-note { text-align: center; color: var(--ink-2); font-size: 14px; }
+  .stage-note strong { font-family: var(--font-display); font-size: 20px; color: var(--ink-1); display: block; margin-bottom: 4px; }
+
+  .phone {
+    width: 390px; height: 844px;
+    background: var(--bg-1);
+    border-radius: 44px;
+    box-shadow: 0 24px 60px oklch(0.235 0.02 60 / 0.28), 0 0 0 10px oklch(0.2 0.01 60), 0 0 0 12px oklch(0.35 0.01 60);
+    overflow: hidden; position: relative;
+    display: flex; flex-direction: column;
+  }
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 28px 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.2px;
+  }
+
+  /* ---- group header (violet identity moment) ---- */
+  .g-header {
+    background:
+      radial-gradient(120% 140% at 100% 0%, oklch(0.55 0.12 305) 0%, oklch(0.42 0.10 300) 45%, oklch(0.30 0.07 295) 100%);
+    color: white;
+    padding: var(--sp-3) var(--sp-5) var(--sp-6);
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+    position: relative; overflow: hidden;
+  }
+  .g-header::after {
+    content: ""; position: absolute; left: -46px; bottom: -70px;
+    width: 190px; height: 190px; border-radius: 50%;
+    background: oklch(0.72 0.11 195 / 0.18);
+  }
+  .g-nav { display: flex; align-items: center; justify-content: space-between; position: relative; z-index: 1; }
+  .icon-btn {
+    width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer;
+    background: oklch(1 0 0 / 0.16); color: white;
+    display: flex; align-items: center; justify-content: center;
+    transition: background var(--t-fast);
+  }
+  .icon-btn:hover { background: oklch(1 0 0 / 0.26); }
+  .g-title { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-4); position: relative; z-index: 1; }
+  .g-avatar {
+    width: 56px; height: 56px; border-radius: 18px;
+    background: linear-gradient(105deg, var(--accent-1) 0 50%, oklch(0.72 0.12 300 / 0.85) 50%);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display); font-weight: 700; font-size: 18px;
+    flex-shrink: 0;
+  }
+  .g-name { font-family: var(--font-display); font-size: 26px; font-weight: 800; line-height: 1.05; }
+  .g-meta { font-size: 13px; opacity: 0.78; margin-top: 3px; }
+
+  /* member strip */
+  .members { display: flex; gap: 10px; margin-top: var(--sp-4); position: relative; z-index: 1; }
+  .member { text-align: center; width: 52px; cursor: pointer; }
+  .m-dot {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: linear-gradient(105deg, var(--accent-1) 0 50%, oklch(1 0 0 / 0.35) 50%);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto; font-size: 13px; font-weight: 700;
+    border: 2px solid transparent;
+  }
+  .member.you .m-dot { border-color: white; }
+  .m-name { font-size: var(--s-xs); font-weight: 600; opacity: 0.85; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .screen { flex: 1; overflow-y: auto; padding: var(--sp-4) var(--sp-5) 120px; }
+
+  /* simplified debts — the twist */
+  .simp-card {
+    background: var(--bg-2);
+    border-radius: var(--r-md);
+    padding: var(--sp-4);
+    box-shadow: var(--shadow-card);
+  }
+  .simp-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .simp-title { font-size: 13px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.7px; }
+  .simp-badge {
+    font-size: var(--s-cap); font-weight: 700; color: var(--accent-1);
+    background: var(--accent-1-soft);
+    padding: 4px 10px; border-radius: var(--r-pill);
+  }
+  .simp-row { display: flex; align-items: center; gap: var(--sp-3); padding-top: var(--sp-3); }
+  .simp-flow { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  .flow-arrow { color: var(--ink-3); display: flex; }
+  .simp-amt { font-size: 15px; font-weight: 700; font-feature-settings: "tnum"; color: var(--ink-1); }
+  .mini-avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+  }
+  .ma-ps { background: var(--accent-1); color: white; }
+  .ma-dv { background: var(--bg-1); color: var(--ink-1); border: 1.5px solid var(--border-strong); }
+  .ma-sk { background: linear-gradient(105deg, oklch(0.55 0.11 200 / 0.75) 0 50%, var(--accent-1-soft) 50%); }
+  .ma-am { background: var(--accent-2); color: white; }
+  .ma-ks { background: linear-gradient(105deg, var(--accent-2) 0 50%, var(--accent-2-soft) 50%); color: white; }
+
+  .section-label {
+    font-size: 13px; font-weight: 700; color: var(--ink-2);
+    text-transform: uppercase; letter-spacing: 0.7px;
+    margin: var(--sp-6) 0 var(--sp-2);
+  }
+  .row-list { background: var(--bg-2); border-radius: var(--r-md); overflow: hidden; box-shadow: var(--shadow-card); }
+  .exp-row { display: flex; align-items: center; gap: var(--sp-3); padding: 14px var(--sp-4); min-height: 64px; cursor: pointer; transition: background var(--t-fast); }
+  .exp-row:hover { background: var(--bg-3); }
+  .exp-row + .exp-row { border-top: 1px solid var(--border-subtle); }
+  .cat-icon {
+    width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-3); color: var(--ink-1);
+  }
+  .exp-main { flex: 1; min-width: 0; }
+  .exp-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .exp-sub { font-size: 13px; color: var(--ink-3); margin-top: 1px; }
+  .exp-sub b { color: var(--ink-2); font-weight: 600; }
+  .exp-amt { text-align: right; font-feature-settings: "tnum"; }
+  .exp-val { font-size: 15.5px; font-weight: 700; }
+  .exp-cap { font-size: var(--s-cap); color: var(--ink-3); font-weight: 500; margin-top: 1px; }
+
+  .date-divider { font-size: 12px; font-weight: 700; color: var(--ink-3); letter-spacing: 0.5px; margin: var(--sp-4) var(--sp-1) var(--sp-2); }
+
+  /* dual action bar */
+  .action-bar {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-5) 30px;
+    background: color-mix(in oklch, var(--bg-1) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .btn {
+    flex: 1; border: 0; border-radius: 16px; cursor: pointer;
+    font-family: var(--font-ui); font-size: 15px; font-weight: 700;
+    padding: 16px 0; min-height: 52px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: transform var(--t-fast), background var(--t-fast);
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent-1); color: white; box-shadow: var(--shadow-float); }
+  .btn-secondary { background: var(--bg-3); color: var(--ink-1); }
+</style>
+</head>
+<body>
+
+<div class="stage-note">
+  <strong>teramera · Group detail</strong>
+  Simplified debts card + expense ledger · Goa Trip
+</div>
+
+<div class="phone">
+  <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+
+  <header class="g-header">
+    <div class="g-nav">
+      <button class="icon-btn" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="20" height="20"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <button class="icon-btn" aria-label="Group settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="20" height="20"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>
+      </button>
+    </div>
+    <div class="g-title">
+      <div class="g-avatar">GT</div>
+      <div>
+        <div class="g-name">Goa Trip</div>
+        <div class="g-meta">5 members · ₹33,594 spent</div>
+      </div>
+    </div>
+    <div class="members">
+      <div class="member you">
+        <div class="m-dot">D</div>
+        <div class="m-name">You</div>
+      </div>
+      <div class="member">
+        <div class="m-dot">PS</div>
+        <div class="m-name">Priya</div>
+      </div>
+      <div class="member">
+        <div class="m-dot">AM</div>
+        <div class="m-name">Arjun</div>
+      </div>
+      <div class="member">
+        <div class="m-dot">SK</div>
+        <div class="m-name">Sneha</div>
+      </div>
+      <div class="member">
+        <div class="m-dot">KS</div>
+        <div class="m-name">Kabir</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="screen">
+
+    <!-- simplified debts -->
+    <div class="simp-card">
+      <div class="simp-head">
+        <span class="simp-title">Simplify debts</span>
+        <span class="simp-badge">3 payments instead of 7</span>
+      </div>
+      <div class="simp-row">
+        <div class="mini-avatar ma-ks">KS</div>
+        <div class="simp-flow">
+          Kabir pays
+          <span class="flow-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="16" height="16"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+          </span>
+          Priya
+        </div>
+        <div class="simp-amt">₹2,100</div>
+      </div>
+      <div class="simp-row">
+        <div class="mini-avatar ma-dv">D</div>
+        <div class="simp-flow">
+          You pay
+          <span class="flow-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="16" height="16"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+          </span>
+          Kabir
+        </div>
+        <div class="simp-amt">₹920</div>
+      </div>
+      <div class="simp-row">
+        <div class="mini-avatar ma-sk">SK</div>
+        <div class="simp-flow">
+          Sneha pays
+          <span class="flow-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="16" height="16"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+          </span>
+          You
+        </div>
+        <div class="simp-amt">₹1,180</div>
+      </div>
+    </div>
+
+    <!-- expenses -->
+    <div class="date-divider">Yesterday · 21 Aug</div>
+    <div class="row-list">
+      <div class="exp-row">
+        <div class="cat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="21" height="21"><path d="M4 17h16M4 17v-6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6"/><path d="M7 9V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
+        </div>
+        <div class="exp-main">
+          <div class="exp-name">Beach shack dinner</div>
+          <div class="exp-sub">paid by <b>Priya</b> · split equal, 5 people</div>
+        </div>
+        <div class="exp-amt">
+          <div class="exp-val">₹4,480</div>
+          <div class="exp-cap">your share ₹896</div>
+        </div>
+      </div>
+      <div class="exp-row">
+        <div class="cat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="21" height="21"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17V6h3l2 7h6l2-5h-5"/></svg>
+        </div>
+        <div class="exp-main">
+          <div class="exp-name">Scooter rentals</div>
+          <div class="exp-sub">paid by <b>You</b> · split among 4</div>
+        </div>
+        <div class="exp-amt">
+          <div class="exp-val">₹2,000</div>
+          <div class="exp-cap">your share ₹500</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="date-divider">20 Aug</div>
+    <div class="row-list">
+      <div class="exp-row">
+        <div class="cat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="21" height="21"><path d="M3 12h18M12 3c2.5 2.6 4 5.7 4 9s-1.5 6.4-4 9c-2.5-2.6-4-5.7-4-9s1.5-6.4 4-9z"/><circle cx="12" cy="12" r="9"/></svg>
+        </div>
+        <div class="exp-main">
+          <div class="exp-name">Flights BLR–GOI</div>
+          <div class="exp-sub">paid by <b>Kabir</b> · in USD $210 @ 83.4</div>
+        </div>
+        <div class="exp-amt">
+          <div class="exp-val">₹17,514</div>
+          <div class="exp-cap">your share ₹4,379</div>
+        </div>
+      </div>
+      <div class="exp-row">
+        <div class="cat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="21" height="21"><path d="M6 3h12l1.5 6H4.5zM4.5 9V21h15V9M9 13h6"/></svg>
+        </div>
+        <div class="exp-main">
+          <div class="exp-name">Airbnb Anjuna</div>
+          <div class="exp-sub">paid by <b>You</b> · split shares, 5 people</div>
+        </div>
+        <div class="exp-amt">
+          <div class="exp-val">₹9,600</div>
+          <div class="exp-cap">your share ₹2,400</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="action-bar">
+    <button class="btn btn-secondary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="19" height="19"><rect x="3" y="10" width="18" height="7" rx="3"/><path d="M7 15h.01"/></svg>
+      Settle up
+    </button>
+    <button class="btn btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="19" height="19"><path d="M12 5v14M5 12h14"/></svg>
+      Add expense
+    </button>
+  </div>
+</div>
+
+</body>
+</html>

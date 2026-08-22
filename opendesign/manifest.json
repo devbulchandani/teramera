@@ -1,0 +1,44 @@
+{
+  "generated": "2026-08-22T02:20:00+05:30",
+  "sections": [
+    {
+      "id": "mockups",
+      "label": "Mockups",
+      "groups": [
+        {
+          "slug": "core-screens",
+          "files": [
+            { "label": "home-balance.html", "path": "mockups/core-screens/home-balance.html" },
+            { "label": "group-detail.html", "path": "mockups/core-screens/group-detail.html" },
+            { "label": "add-expense.html", "path": "mockups/core-screens/add-expense.html" }
+          ]
+        },
+        {
+          "slug": "v1-screens",
+          "files": [
+            { "label": "auth-onboarding.html", "path": "mockups/v1-screens/auth-onboarding.html" },
+            { "label": "settle-up.html", "path": "mockups/v1-screens/settle-up.html" },
+            { "label": "activity.html", "path": "mockups/v1-screens/activity.html" },
+            { "label": "settings-paywall.html", "path": "mockups/v1-screens/settings-paywall.html" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "design-systems",
+      "label": "Design Systems",
+      "groups": [
+        {
+          "slug": "teramera-product",
+          "files": [
+            { "label": "README.md", "path": "design-systems/teramera-product/README.md" },
+            { "label": "SKILL.md", "path": "design-systems/teramera-product/SKILL.md" },
+            { "label": "colors_and_type.css", "path": "design-systems/teramera-product/tokens/colors_and_type.css" },
+            { "label": "voice-and-tone.md", "path": "design-systems/teramera-product/brand/voice-and-tone.md" },
+            { "label": "style-notes.md", "path": "design-systems/teramera-product/brand/style-notes.md" }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera — Auth &amp; Onboarding</title>
+<link rel="stylesheet" href="../../design-systems/teramera-product/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: oklch(0.88 0.01 80);
+    font-family: var(--font-ui);
+    color: var(--ink-1);
+    display: flex; flex-direction: column; align-items: center;
+    gap: var(--sp-5);
+    padding: var(--sp-8) var(--sp-4);
+    min-height: 100vh;
+  }
+  .screen-toggle {
+    display: inline-flex; gap: 2px;
+    background: var(--bg-3); border-radius: var(--r-pill); padding: 4px;
+  }
+  .screen-toggle button {
+    border: 0; background: transparent; cursor: pointer;
+    font-family: var(--font-ui); font-size: 13px; font-weight: 600;
+    color: var(--ink-2); padding: 8px 18px; border-radius: var(--r-pill);
+    min-height: 36px; transition: all var(--t-fast);
+  }
+  .screen-toggle button.active { background: var(--bg-1); color: var(--ink-1); box-shadow: var(--shadow-card); }
+
+  .phone {
+    width: 390px; height: 844px;
+    background: var(--bg-1);
+    border-radius: 44px;
+    box-shadow: 0 24px 60px oklch(0.235 0.02 60 / 0.28), 0 0 0 10px oklch(0.2 0.01 60), 0 0 0 12px oklch(0.35 0.01 60);
+    overflow: hidden; position: relative;
+    display: flex; flex-direction: column;
+  }
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 28px 6px; font-size: 14px; font-weight: 600; }
+  [hidden] { display: none !important; }
+
+  /* ============ WELCOME ============ */
+  .welcome { flex: 1; display: flex; flex-direction: column; padding: var(--sp-6) var(--sp-6) 40px; position: relative; overflow: hidden; }
+  .welcome::before {
+    content: ""; position: absolute; top: -90px; right: -90px;
+    width: 280px; height: 280px; border-radius: 50%;
+    background: radial-gradient(circle, oklch(0.55 0.12 305 / 0.14) 0%, oklch(0.55 0.12 305 / 0) 70%);
+  }
+  .welcome::after {
+    content: ""; position: absolute; bottom: 120px; left: -110px;
+    width: 260px; height: 260px; border-radius: 50%;
+    background: radial-gradient(circle, oklch(0.55 0.11 200 / 0.12) 0%, oklch(0.55 0.11 200 / 0) 70%);
+  }
+  .logo-lockup { position: relative; z-index: 1; }
+  .logo-mark {
+    width: 64px; height: 64px; border-radius: 20px;
+    background: linear-gradient(105deg, var(--accent-1) 0 50%, var(--accent-2) 50%);
+    box-shadow: var(--shadow-float);
+  }
+  .wordmark {
+    font-family: var(--font-display); font-weight: 800; font-size: 56px;
+    letter-spacing: -2px; line-height: 1;
+    margin-top: var(--sp-8);
+  }
+  .wordmark .tere { color: var(--accent-2); }
+  .wordmark .mera { color: var(--accent-1); }
+  .tagline {
+    font-size: var(--s-md); color: var(--ink-2); font-weight: 500;
+    margin-top: var(--sp-3); max-width: 260px; line-height: 1.45;
+  }
+  .value-points { margin-top: auto; display: flex; flex-direction: column; gap: var(--sp-4); position: relative; z-index: 1; margin-bottom: var(--sp-8); }
+  .vp { display: flex; align-items: center; gap: var(--sp-3); font-size: 15px; font-weight: 600; }
+  .vp-icon {
+    width: 40px; height: 40px; border-radius: 13px; flex-shrink: 0;
+    background: var(--bg-3); color: var(--ink-1);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .vp span b { font-weight: 700; }
+  .vp span { font-weight: 400; color: var(--ink-2); }
+  .vp span b { color: var(--ink-1); }
+  .auth-actions { display: flex; flex-direction: column; gap: var(--sp-3); position: relative; z-index: 1; }
+  .btn {
+    width: 100%; min-height: 54px; border-radius: 16px; border: 0; cursor: pointer;
+    font-family: var(--font-ui); font-size: 15.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: transform var(--t-fast), background var(--t-fast);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-google { background: var(--bg-2); color: var(--ink-1); box-shadow: var(--shadow-card); }
+  .btn-phone { background: var(--accent-1); color: white; }
+  .legal { font-size: var(--s-cap); color: var(--ink-3); text-align: center; line-height: 1.5; margin-top: var(--sp-2); }
+  .legal a { color: var(--ink-2); font-weight: 600; }
+
+  /* ============ OTP ============ */
+  .otp-screen { flex: 1; display: flex; flex-direction: column; padding: var(--sp-3) var(--sp-6) 40px; }
+  .back-btn {
+    width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer;
+    background: var(--bg-3); color: var(--ink-1);
+    display: flex; align-items: center; justify-content: center;
+    align-self: flex-start; margin-bottom: var(--sp-5);
+  }
+  .otp-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; line-height: 1.15; }
+  .otp-sub { font-size: var(--s-base); color: var(--ink-2); margin-top: var(--sp-2); line-height: 1.45; }
+  .otp-sub b { color: var(--ink-1); }
+  .change-link { color: var(--accent-1); font-weight: 700; cursor: pointer; }
+  .otp-boxes { display: flex; gap: 10px; margin-top: var(--sp-8); }
+  .otp-box {
+    width: 52px; height: 62px; border-radius: 14px;
+    background: var(--bg-2); border: 1.5px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display); font-size: 24px; font-weight: 700;
+    transition: all var(--t-fast);
+  }
+  .otp-box.filled { background: var(--bg-1); border-color: var(--border-strong); }
+  .otp-box.active { border-color: var(--accent-1); box-shadow: 0 0 0 3px oklch(0.55 0.11 200 / 0.18); }
+  .resend { margin-top: var(--sp-5); font-size: 14px; color: var(--ink-2); text-align: center; }
+  .resend b { color: var(--accent-1); cursor: pointer; }
+  .otp-foot { margin-top: auto; }
+
+  .btn-primary-full {
+    width: 100%; min-height: 56px; border-radius: 16px; border: 0; cursor: pointer;
+    background: var(--accent-1); color: white;
+    font-family: var(--font-ui); font-size: 16px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: transform var(--t-fast);
+  }
+  .btn-primary-full:active { transform: scale(0.98); }
+</style>
+</head>
+<body>
+
+<div class="screen-toggle">
+  <button id="tb1" class="active" onclick="go(1)">Welcome</button>
+  <button id="tb2" onclick="go(2)">Verify phone</button>
+</div>
+
+<!-- ============ WELCOME ============ -->
+<div class="phone" id="scr1">
+  <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+  <div class="welcome">
+    <div class="logo-mark"></div>
+
+    <h1 class="wordmark"><span class="tere">tere</span><span class="mera">mera</span></h1>
+    <p class="tagline">Money between friends, split fairly and settled simply.</p>
+
+    <div class="value-points">
+      <div class="vp">
+        <div class="vp-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </div>
+        <span><b>Split any way.</b> Equal, exact, percent or shares — pick who's in.</span>
+      </div>
+      <div class="vp">
+        <div class="vp-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="20" height="20"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+        </div>
+        <span><b>Fewer payments.</b> We find the simplest path to settle everyone up.</span>
+      </div>
+      <div class="vp">
+        <div class="vp-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="20" height="20"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        </div>
+        <span><b>Works offline.</b> Add expenses anywhere — syncs when you're back.</span>
+      </div>
+    </div>
+
+    <div class="auth-actions">
+      <button class="btn btn-google">
+        <svg viewBox="0 0 24 24" width="19" height="19"><path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.45a5.5 5.5 0 0 1-2.39 3.62v3h3.87c2.26-2.09 3.57-5.16 3.57-8.81z"/><path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.87-3c-1.07.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.29v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.27 14.28A7.2 7.2 0 0 1 4.89 12c0-.79.14-1.56.38-2.28v-3.1H1.29a12 12 0 0 0 0 10.76z"/><path fill="#EA4335" d="M12 4.76c1.76 0 3.34.6 4.58 1.8l3.44-3.44A11.97 11.97 0 0 0 12 0 12 12 0 0 0 1.29 6.62l3.98 3.1C6.22 6.87 8.87 4.76 12 4.76z"/></svg>
+        Continue with Google
+      </button>
+      <button class="btn btn-phone" onclick="go(2)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="18" height="18"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>
+        Continue with phone
+      </button>
+      <p class="legal">By continuing you agree to our <a>Terms</a> and <a>Privacy Policy</a>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ VERIFY PHONE ============ -->
+<div class="phone" id="scr2" hidden>
+  <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+  <div class="otp-screen">
+    <button class="back-btn" onclick="go(1)" aria-label="Back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="20" height="20"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
+
+    <h1 class="otp-title">Enter the code</h1>
+    <p class="otp-sub">We sent a 6-digit code to <b>+91 98765 43210</b>. <span class="change-link">Change number</span></p>
+
+    <div class="otp-boxes">
+      <div class="otp-box filled">4</div>
+      <div class="otp-box filled">8</div>
+      <div class="otp-box filled">2</div>
+      <div class="otp-box active"></div>
+      <div class="otp-box"></div>
+      <div class="otp-box"></div>
+    </div>
+
+    <p class="resend">Didn't get it? <b>Resend in 0:24</b></p>
+
+    <div class="otp-foot">
+      <button class="btn-primary-full">
+        Verify &amp; continue
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="18" height="18"><path d="m5 13 4 4L19 7"/></svg>
+      </button>
+      <p class="legal">Your number is only used to find friends on teramera. It's never shown publicly.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  function go(n) {
+    document.getElementById("scr1").hidden = n !== 1;
+    document.getElementById("scr2").hidden = n !== 2;
+    document.getElementById("tb1").classList.toggle("active", n === 1);
+    document.getElementById("tb2").classList.toggle("active", n === 2);
+  }
+</script>
+</body>
+</html>
