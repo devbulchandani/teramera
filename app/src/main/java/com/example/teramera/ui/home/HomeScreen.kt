@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,9 +48,10 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     onAddExpense: () -> Unit = {},
     onOpenGroup: (String) -> Unit = {},
+    onLogout: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    HomeContent(state = state, onAddExpense = onAddExpense, onOpenGroup = onOpenGroup)
+    HomeContent(state = state, onAddExpense = onAddExpense, onOpenGroup = onOpenGroup, onLogout = onLogout)
 }
 
 enum class HomeTab(val label: String) { Friends("Friends"), Groups("Groups"), All("All") }
@@ -57,13 +59,14 @@ enum class HomeTab(val label: String) { Friends("Friends"), Groups("Groups"), Al
 @Composable
 fun HomeContent(
     state: HomeUiState,
-    onAddExpense: () -> Unit,
+    onAddExpense: () -> Unit = {},
     onOpenGroup: (String) -> Unit = {},
+    onLogout: () -> Unit = {},
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar()
+        TopBar(onLogout = onLogout)
         HeroCard(
             netMinor = state.netMinor,
             owedToYouMinor = state.owedToYouMinor,
@@ -115,7 +118,8 @@ private fun friendSubtitle(entry: BalanceEntry): String =
     }
 
 @Composable
-private fun TopBar() {
+internal fun TopBar(onLogout: () -> Unit = {}) {
+    var menuOpen by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -134,7 +138,26 @@ private fun TopBar() {
                 style = MaterialTheme.typography.titleLarge,
             )
         }
-        Avatar(initials = "D", isViolet = false, size = 44.dp)
+        Box {
+            Box(modifier = Modifier.clickable { menuOpen = true }) {
+                Avatar(initials = "D", isViolet = false, size = 44.dp)
+            }
+            androidx.compose.material3.DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+            ) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Log out", color = MaterialTheme.colorScheme.error) },
+                    leadingIcon = {
+                        Text("⏻", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onLogout()
+                    },
+                )
+            }
+        }
     }
 }
 

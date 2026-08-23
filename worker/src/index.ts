@@ -420,23 +420,33 @@ app.post("/groups/:groupId/invite-email", async (c) => {
 /** Public landing for invite links. */
 app.get("/invite/:groupId", async (c) => {
     const groupId = c.req.param("groupId");
-    const apkUrl = c.env.APK_DOWNLOAD_URL || "";
+    const apkUrl = c.env.APK_DOWNLOAD_URL ||
+        "https://github.com/devbulchandani/teramera/releases/latest/download/teramera-v0.1.0.apk";
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>teramera invite</title>
+<title>teramera — group invite</title>
 <style>
- body{font-family:-apple-system,system-ui,sans-serif;background:#FBF9F4;color:#251C15;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
- .card{max-width:360px;text-align:center;padding:32px}
- .logo{font-size:44px;font-weight:800;letter-spacing:-2px}
+ *{box-sizing:border-box}
+ body{font-family:-apple-system,system-ui,'Segoe UI',sans-serif;background:#FBF9F4;color:#251C15;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+ .card{max-width:380px;width:100%;background:#F5F1E8;border-radius:24px;padding:36px 28px;text-align:center;box-shadow:0 6px 24px rgba(37,28,21,.08)}
+ .logo{font-size:40px;font-weight:800;letter-spacing:-2px}
  .tere{color:#825EA9}.mera{color:#00848B}
- a.btn{display:inline-block;margin-top:20px;padding:14px 26px;border-radius:16px;background:#00848B;color:#fff;text-decoration:none;font-weight:700}
- small{color:#877F75;display:block;margin-top:14px;line-height:1.5}
+ h1{font-size:22px;margin:18px 0 8px;font-weight:700}
+ p{font-size:15px;color:#5B5046;line-height:1.5;margin:0 0 24px}
+ .btn{display:block;padding:16px;border-radius:16px;text-decoration:none;font-weight:700;font-size:15.5px;margin-bottom:12px}
+ .btn-primary{background:#00848B;color:#fff}
+ .btn-secondary{background:#ECE7DB;color:#251C15}
+ small{display:block;margin-top:16px;font-size:12px;color:#877F75;line-height:1.5}
+ .badge{display:inline-block;background:#D2EEF0;color:#00565b;font-size:11.5px;font-weight:700;padding:4px 12px;border-radius:999px;margin-bottom:14px}
 </style></head>
 <body><div class="card">
+ <div class="badge">GROUP INVITE</div>
  <div class="logo"><span class="tere">tere</span><span class="mera">mera</span></div>
- <p>You've been invited to a group. Open the app to join.</p>
- <a class="btn" href="intent://invite/${groupId}#Intent;scheme=teramera;package=com.example.teramera;S.browser_fallback_url=${encodeURIComponent(apkUrl)};end">Join the group</a>
- ${apkUrl ? `<small>No app yet? The same button will offer the download.</small>` : `<small>The app will open if installed. Ask your friend for the APK meanwhile.</small>`}
+ <h1>You've been invited to a group</h1>
+ <p>Split expenses with friends fairly — add expenses your way, settle up in the fewest payments possible.</p>
+ <a class="btn btn-primary" href="intent://invite/${groupId}#Intent;scheme=teramera;package=com.example.teramera;S.browser_fallback_url=${encodeURIComponent(apkUrl)};end">Open in app &amp; join</a>
+ <a class="btn btn-secondary" href="${apkUrl}">Download the app first</a>
+ <small>Opening the link above joins this group automatically after you sign in.</small>
 </div></body></html>`;
     return c.html(html);
 });

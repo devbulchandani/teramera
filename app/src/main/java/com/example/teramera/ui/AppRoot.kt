@@ -80,7 +80,7 @@ fun AppRoot() {
 
 @HiltViewModel
 class SessionViewModel @Inject constructor(
-    authRepository: AuthRepository,
+    private val authRepository: AuthRepository,
     private val syncRepository: com.example.teramera.data.sync.SyncRepository,
 ) : ViewModel() {
     val isLoggedIn: StateFlow<Boolean?> = authRepository.isLoggedIn.stateIn(
@@ -89,6 +89,13 @@ class SessionViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch { syncRepository.refreshNow() }
+    }
+
+    fun logout(onDone: () -> Unit) {
+        viewModelScope.launch {
+            authRepository.logout()
+            onDone()
+        }
     }
 
     fun joinGroup(groupId: String, onJoined: (String) -> Unit) {
@@ -184,17 +191,36 @@ private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(Routes.HOME) {
-                HomeScreen(onOpenGroup = { groupId -> navController.navigate(Routes.groupDetail(groupId)) })
+                HomeScreen(
+                    onOpenGroup = { groupId -> navController.navigate(Routes.groupDetail(groupId)) },
+                    onLogout = {
+                        sessionViewModel.logout {
+                            navController.navigate(Routes.HOME) { popUpTo(0) }
+                        }
+                    },
+                )
             }
             composable(Routes.GROUPS) {
                 GroupsScreen(onOpenGroup = { groupId -> navController.navigate(Routes.groupDetail(groupId)) })
             }
             composable(Routes.GROUP_DETAIL) {
+                val context = androidx.compose.ui.platform.LocalContext.current
                 GroupDetailScreen(
                     onBack = { navController.popBackStack() },
                     onAddExpense = { groupId ->
                         addExpenseGroupId = groupId
                         showAddExpense = true
+                    },
+                    onShareGroup = { groupName, groupId ->
+                        val link = "https://teramera-api.devbulchandani876.workers.dev/invite/$groupId"
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(
+                                android.content.Intent.EXTRA_TEXT,
+                                "Join my \"$groupName\" group on teramera — we split expenses fairly: $link"
+                            )
+                        }
+                        context.startActivity(android.content.Intent.createChooser(send, "Share group invite"))
                     },
                 )
             }

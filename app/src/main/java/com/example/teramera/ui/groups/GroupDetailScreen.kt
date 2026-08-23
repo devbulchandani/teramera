@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.teramera.data.repository.initials
 import com.example.teramera.ui.home.formatInr
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -46,6 +47,7 @@ import java.util.Locale
 fun GroupDetailScreen(
     onBack: () -> Unit,
     onAddExpense: (String) -> Unit = {},
+    onShareGroup: (String, String) -> Unit = { _, _ -> },
     viewModel: GroupDetailViewModel = hiltViewModel(),
 ) {
     val detail by viewModel.detail.collectAsStateWithLifecycle()
@@ -75,6 +77,7 @@ fun GroupDetailScreen(
                     totalSpentMinor = d.totalSpentMinor,
                     onBack = onBack,
                     onAddMember = viewModel::showAddMember,
+                    onShare = { onShareGroup(d.groupName, d.groupId) },
                 )
 
                 LazyColumn(
@@ -146,6 +149,7 @@ private fun GroupHeader(
     totalSpentMinor: Long,
     onBack: () -> Unit,
     onAddMember: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val violet = MaterialTheme.colorScheme.secondary
     Column(
@@ -171,15 +175,27 @@ private fun GroupHeader(
             ) {
                 Text("←", color = Color.White, style = MaterialTheme.typography.titleMedium)
             }
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.16f))
-                    .clickable(onClick = onAddMember),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("+", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.16f))
+                        .clickable(onClick = onShare),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("⇪", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                }
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.16f))
+                        .clickable(onClick = onAddMember),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("+", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                }
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -365,7 +381,9 @@ private fun AddMemberDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add member") },
+        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.background,
+        title = { Text("Add member", style = MaterialTheme.typography.titleLarge) },
         text = {
             Column {
                 OutlinedTextField(
@@ -377,11 +395,40 @@ private fun AddMemberDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 when {
-                    state.found != null -> Text(
-                        "Found: ${state.found!!.name.ifBlank { state.found!!.phone ?: state.found!!.email ?: "user" }}",
-                        color = MaterialTheme.colorScheme.tertiary,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    state.found != null -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.tertiaryContainer)
+                            .padding(12.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                initials(state.found!!.name.ifBlank { "?" }),
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                "Found: " + state.found!!.name.ifBlank { state.found!!.phone ?: state.found!!.email ?: "user" },
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
+                            )
+                            Text(
+                                "Ready to join this group",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     state.error != null -> Column {
                         Text(
                             state.error!!,

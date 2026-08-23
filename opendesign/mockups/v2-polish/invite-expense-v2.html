@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera — Invite &amp; Group Expense v2</title>
+<link rel="stylesheet" href="../../design-systems/teramera-product/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: oklch(0.88 0.01 80);
+    font-family: var(--font-ui);
+    color: var(--ink-1);
+    display: flex; flex-direction: column; align-items: center;
+    gap: var(--sp-5);
+    padding: var(--sp-8) var(--sp-4);
+    min-height: 100vh;
+  }
+  .stage-note { text-align: center; color: var(--ink-2); font-size: 14px; margin-bottom: var(--sp-4); }
+  .stage-note strong { font-family: var(--font-display); font-size: 20px; color: var(--ink-1); display: block; margin-bottom: 4px; }
+
+  .phone {
+    width: 390px; height: 844px;
+    background: var(--bg-1);
+    border-radius: 44px;
+    box-shadow: 0 24px 60px oklch(0.235 0.02 60 / 0.28), 0 0 0 10px oklch(0.2 0.01 60), 0 0 0 12px oklch(0.35 0.01 60);
+    overflow: hidden; position: relative;
+    display: flex; flex-direction: column;
+  }
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 28px 6px; font-size: 14px; font-weight: 600; }
+
+  .row { display: flex; gap: var(--sp-5); align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  h3.panel-title { font-family: var(--font-display); font-size: 17px; margin-bottom: var(--sp-3); }
+
+  /* ============ INVITE LANDING PAGE ============ */
+  .landing {
+    width: 390px; min-height: 700px;
+    background: var(--bg-1);
+    border-radius: 44px;
+    box-shadow: 0 24px 60px oklch(0.235 0.02 60 / 0.28);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 32px;
+  }
+  .badge {
+    display: inline-block; background: var(--accent-1-soft); color: #00565b;
+    font-size: 11.5px; font-weight: 700; letter-spacing: 0.5px;
+    padding: 5px 14px; border-radius: 999px; margin-bottom: 16px;
+  }
+  .logo { font-family: var(--font-display); font-size: 38px; font-weight: 800; letter-spacing: -2px; }
+  .logo .tere { color: var(--accent-2); }
+  .logo .mera { color: var(--accent-1); }
+  .landing h1 { font-family: var(--font-display); font-size: 22px; margin: 18px 0 8px; }
+  .landing p { font-size: 15px; color: var(--ink-2); line-height: 1.5; margin-bottom: 24px; }
+  .btn {
+    display: block; width: 100%; padding: 16px; border-radius: 16px;
+    text-decoration: none; font-weight: 700; font-size: 15.5px; margin-bottom: 12px;
+    font-family: var(--font-ui);
+  }
+  .btn-primary { background: var(--accent-1); color: white; box-shadow: var(--shadow-float); }
+  .btn-secondary { background: var(--bg-3); color: var(--ink-1); }
+  .landing small { display: block; margin-top: 14px; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+
+  /* ============ ADD MEMBER DIALOG ============ */
+  .dialog-scr { padding: var(--sp-6) var(--sp-5); }
+  .scrim-note { background: var(--ink-1); color: oklch(0.945 0.008 85); font-size: 12px; padding: 8px 14px; border-radius: 999px; display: inline-block; margin-bottom: var(--sp-4); }
+  .dialog {
+    background: var(--bg-1); border-radius: 24px; padding: var(--sp-5);
+    box-shadow: var(--shadow-float);
+  }
+  .dialog .title { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin-bottom: var(--sp-2); }
+  .field {
+    background: var(--bg-2); border-radius: 16px; padding: 14px 16px;
+    display: flex; align-items: center; gap: 10px; margin-top: var(--sp-3);
+    border: 1.5px solid transparent;
+  }
+  .field:focus-within { border-color: var(--accent-1); }
+  .field input { border: 0; outline: 0; background: transparent; font-family: var(--font-ui); font-size: 15px; color: var(--ink-1); width: 100%; }
+  .field input::placeholder { color: var(--ink-3); }
+  .found-card {
+    margin-top: var(--sp-3);
+    background: var(--pos-soft);
+    border-radius: 14px; padding: 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(105deg, var(--accent-1) 0 50%, var(--accent-1-soft) 50%);
+    color: white; font-weight: 700; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .found-card .n { font-size: 14.5px; font-weight: 600; }
+  .found-card .s { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+  .error-text { color: var(--neg); font-size: 12.5px; margin-top: var(--sp-2); }
+  .invite-btn {
+    background: none; border: 0; cursor: pointer;
+    color: var(--accent-2); font-family: var(--font-ui); font-size: 13.5px; font-weight: 700;
+    padding: 8px 0 0;
+  }
+  .actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-5); }
+  .text-btn {
+    background: none; border: 0; cursor: pointer;
+    font-family: var(--font-ui); font-size: 14px; font-weight: 700; color: var(--ink-2);
+    padding: 10px 14px; border-radius: 12px; min-height: 44px;
+  }
+  .text-btn.primary { color: var(--accent-1); }
+
+  /* ============ EXPENSE SHEET (server mode) ============ */
+  .sheet { padding: var(--sp-4) var(--sp-5) var(--sp-6); }
+  .sheet-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-2); }
+  .sheet-title { font-family: var(--font-display); font-size: 19px; font-weight: 700; }
+  .group-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-2-soft); font-size: 13.5px; font-weight: 700;
+    padding: 9px 14px; border-radius: 999px; margin: var(--sp-2) 0 var(--sp-3);
+  }
+  .gp-dot { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(105deg, var(--accent-2) 0 50%, var(--accent-1) 50%); }
+  .section-label {
+    font-size: 13px; font-weight: 700; color: var(--ink-2);
+    text-transform: uppercase; letter-spacing: 0.7px;
+    margin: var(--sp-4) 0 var(--sp-2);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .count-badge {
+    background: var(--accent-1-soft); color: var(--ink-1);
+    font-size: 11px; font-weight: 800;
+    padding: 2px 9px; border-radius: 999px; letter-spacing: 0;
+  }
+  .chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .chip {
+    border: 1.5px solid var(--border-subtle); background: var(--bg-2);
+    border-radius: 999px; padding: 10px 8px; text-align: center;
+    font-size: 13.5px; font-weight: 600; cursor: pointer;
+    transition: all var(--t-fast); min-height: 40px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .chip.on { border-color: var(--accent-1); background: var(--accent-1-soft); }
+  .payer-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface-raised, var(--bg-2));
+    border-radius: 14px; padding: 10px 12px; margin-bottom: 8px;
+  }
+  .payer-row .label { flex: 1; font-size: 14px; font-weight: 500; }
+  .amt-input {
+    background: var(--bg-1); border: 1.5px solid var(--border-subtle); border-radius: 12px;
+    padding: 9px 12px; font-family: var(--font-ui); font-size: 14px; width: 110px;
+    text-align: right; font-feature-settings: "tnum"; color: var(--ink-1);
+  }
+  .sum-banner {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12.5px; font-weight: 600; margin-top: 6px;
+    padding: 9px 12px; border-radius: 12px;
+  }
+  .sum-banner.ok { background: var(--pos-soft); color: #14532d; }
+  .sum-banner.bad { background: var(--neg-soft); color: #7f1d1d; }
+  .save-btn {
+    width: calc(100% - 0px); margin-top: var(--sp-4);
+    background: var(--accent-1); color: white; border: 0; cursor: pointer;
+    border-radius: 16px; padding: 17px; min-height: 56px;
+    font-family: var(--font-ui); font-size: 16px; font-weight: 700;
+  }
+  .save-btn[disabled] { opacity: 0.45; cursor: default; }
+</style>
+</head>
+<body>
+
+<div class="stage-note">
+  <strong>teramera · Invites &amp; group expenses — v2 polish</strong>
+  Invite landing page · add-member dialog · multi-payer expense sheet
+</div>
+
+<div class="row">
+
+  <!-- INVITE LANDING -->
+  <div class="landing">
+    <span class="badge">GROUP INVITE</span>
+    <div class="logo"><span class="tere">tere</span><span class="mera">mera</span></div>
+    <h1>You've been invited to a group</h1>
+    <p>Split expenses with friends fairly — add expenses your way, settle up in the fewest payments possible.</p>
+    <a class="btn btn-primary" href="#">Open in app &amp; join</a>
+    <a class="btn btn-secondary" href="#">Download the app first</a>
+    <small>Opening the link above joins this group automatically after you sign in.</small>
+  </div>
+
+  <!-- ADD MEMBER DIALOG -->
+  <div class="phone">
+    <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+    <div class="dialog-scr">
+      <div class="scrim-note">over a dimmed group screen</div>
+      <h3 class="panel-title">Add member</h3>
+      <div class="dialog">
+        <div class="title">Add member</div>
+        <div class="field">
+          <input placeholder="Phone (+91…) or email" value="priya@gmail.com">
+        </div>
+        <div class="found-card">
+          <div class="avatar">PS</div>
+          <div>
+            <div class="n">Found: Priya Sharma</div>
+            <div class="s">Ready to join this group</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="text-btn">Cancel</button>
+          <button class="text-btn primary">Add to group</button>
+        </div>
+      </div>
+
+      <h3 class="panel-title" style="margin-top:28px">…when they're not on teramera yet</h3>
+      <div class="dialog">
+        <div class="title">Add member</div>
+        <div class="field">
+          <input placeholder="Phone (+91…) or email" value="kabir@newmail.com">
+        </div>
+        <div class="error-text">No teramera user with that email yet</div>
+        <button class="invite-btn">Email them an invite link →</button>
+        <div class="actions">
+          <button class="text-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MULTI-PAYER EXPENSE SHEET -->
+  <div class="phone">
+    <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+    <div class="sheet">
+      <div class="sheet-bar">
+        <span class="sheet-title">Add expense</span>
+        <div style="width:44px;height:44px;border-radius:50%;background:var(--bg-3);display:flex;align-items:center;justify-content:center;font-weight:600;">✕</div>
+      </div>
+      <span class="group-pill"><span class="gp-dot"></span>Goa Trip</span>
+
+      <div class="section-label">Paid by <span class="count-badge">2 SELECTED</span></div>
+      <div class="chips">
+        <div class="chip on">You</div>
+        <div class="chip on">Priya</div>
+        <div class="chip">Arjun</div>
+        <div class="chip">Sneha</div>
+        <div class="chip">Kabir</div>
+      </div>
+
+      <div style="margin-top:var(--sp-3)">
+        <div class="payer-row">
+          <span class="label">₹ from You</span>
+          <input class="amt-input" value="300" readonly value2="">
+        </div>
+        <div class="payer-row">
+          <span class="label">₹ from Priya</span>
+          <input class="amt-input" value="500">
+        </div>
+        <div class="sum-banner bad">Adds up to ₹800 of ₹800 total</div>
+      </div>
+
+      <div class="section-label">Split between <span class="count-badge">4 PEOPLE</span></div>
+      <div class="chips">
+        <div class="chip on">You</div>
+        <div class="chip on">Priya</div>
+        <div class="chip on">Arjun</div>
+        <div class="chip">Sneha</div>
+        <div class="chip">Kabir</div>
+      </div>
+      <p style="font-size:12.5px;color:var(--ink-3);margin-top:6px;">4 people · equal shares</p>
+
+      <button class="save-btn">Save expense · ₹800</button>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

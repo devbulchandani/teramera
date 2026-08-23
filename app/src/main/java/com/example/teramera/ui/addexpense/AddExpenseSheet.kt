@@ -646,10 +646,11 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
         return
     }
 
-    SectionLabel("Paid by")
+
     val activePayers = state.draft.payers.keys.ifEmpty {
         setOfNotNull(state.selfServerId)
     }
+    SectionLabel("Paid by · ${activePayers.size} selected")
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         members.chunked(3).forEach { rowMembers ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -680,7 +681,11 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
             val member = members.firstOrNull { it.id == uid }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Text("₹ from ${member?.let { memberLabel(it) } ?: uid}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 OutlinedTextField(
@@ -704,7 +709,7 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
     }
 
     Spacer(Modifier.height(16.dp))
-    SectionLabel("Split between")
+    SectionLabel("Split between · ${state.draft.includedServer.size} people")
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         members.chunked(3).forEach { rowMembers ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
