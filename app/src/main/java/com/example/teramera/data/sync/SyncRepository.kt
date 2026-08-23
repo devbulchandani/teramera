@@ -26,6 +26,20 @@ class SyncRepository @Inject constructor(
 
     suspend fun selfUserId(): String? = tokenStore.current()?.userId
 
+    suspend fun joinGroup(groupId: String) {
+        ledgerApi.joinGroup(groupId)
+    }
+
+    suspend fun inviteByEmail(groupId: String, email: String): String? =
+        try {
+            ledgerApi.inviteByEmail(
+                groupId,
+                com.example.teramera.core.network.LedgerApi.InviteEmailRequestDto(email),
+            )["status"]
+        } catch (e: retrofit2.HttpException) {
+            if (e.code() == 404) null else throw e
+        }
+
     suspend fun refreshNow(): Result = try {
         val now = System.currentTimeMillis()
 

@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -73,7 +74,7 @@ fun AppRoot() {
     when (loggedIn) {
         null -> Box(Modifier.fillMaxSize()) // restoring session
         false -> LoginScreen(onLoggedIn = { /* isLoggedIn flow flips the gate */ })
-        true -> MainApp(sessionViewModel)
+        true -> MainApp(loggedIn, sessionViewModel)
     }
 }
 
@@ -89,14 +90,44 @@ class SessionViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch { syncRepository.refreshNow() }
     }
+
+    fun joinGroup(groupId: String, onJoined: (String) -> Unit) {
+        viewModelScope.launch {
+            runCatching { syncRepository.joinGroup(groupId) }
+            syncRepository.refreshNow()
+            onJoined(groupId)
+        }
+    }
 }
 
 @Composable
-private fun MainApp(sessionViewModel: SessionViewModel) {
+private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
     // refresh server state on every entry into the app
     androidx.compose.runtime.LaunchedEffect(Unit) { sessionViewModel.refresh() }
 
     val navController = rememberNavController()
+
+    // ---- group invite deep links (teramera://invite/<id> or https://…/invite/<id>) ----
+    val activity = androidx.compose.ui.platform.LocalContext.current as? androidx.activity.ComponentActivity
+    var pendingInvite by rememberSaveable { mutableStateOf(activity?.intent?.let { extractInviteId(it) }) }
+    val newIntentListener = remember {
+        androidx.core.util.Consumer<android.content.Intent> { intent ->
+            extractInviteId(intent)?.let { pendingInvite = it }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(activity) {
+        activity?.addOnNewIntentListener(newIntentListener)
+        onDispose { activity?.removeOnNewIntentListener(newIntentListener) }
+    }
+    androidx.compose.runtime.LaunchedEffect(loggedIn, pendingInvite) {
+        val groupId = pendingInvite
+        if (loggedIn == true && groupId != null) {
+            sessionViewModel.joinGroup(groupId) { id ->
+                navController.navigate(Routes.groupDetail(id))
+            }
+            pendingInvite = null
+        }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: Routes.HOME
     var showAddExpense by rememberSaveable { mutableStateOf(false) }
@@ -193,5 +224,14 @@ private fun Placeholder(title: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+private fun extractInviteId(intent: android.content.Intent?): String? {
+    val uri = intent?.data ?: return null
+    return when {
+        uri.scheme == "teramera" && uri.host == "invite" -> uri.lastPathSegment
+        uri.scheme == "https" && uri.path?.startsWith("/invite") == true -> uri.lastPathSegment
+        else -> null
     }
 }

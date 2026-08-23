@@ -96,17 +96,46 @@ class GroupDetailViewModel @Inject constructor(
         addMember.value = AddMemberState()
     }
 
-    fun findFriend(phone: String) {
+    private var lastQuery: String? = null
+
+    fun findFriend(query: String) {
         viewModelScope.launch {
             addMember.value = addMember.value.copy(searching = true, error = null, found = null)
+            lastQuery = query.trim()
             try {
-                val found = ledgerApi.findUser(phone)
+                val found = if (query.contains("@")) ledgerApi.findUserByEmail(query.trim())
+                else ledgerApi.findUser(query.trim())
                 addMember.value = AddMemberState(visible = true, found = found)
             } catch (e: retrofit2.HttpException) {
-                val message = if (e.code() == 404) "No teramera user with that number yet" else e.message()
+                val message = when {
+                    e.code() == 404 && query.contains("@") -> "No teramera user with that email yet"
+                    e.code() == 404 -> "No teramera user with that number yet"
+                    else -> e.message()
+                }
                 addMember.value = AddMemberState(visible = true, error = message)
             } catch (e: Exception) {
                 addMember.value = AddMemberState(visible = true, error = e.message ?: "Search failed")
+            }
+        }
+    }
+
+    /** Emails a download+join link to someone who hasn't signed up yet. */
+    fun inviteByEmail(email: String) {
+        viewModelScope.launch {
+            addMember.value = addMember.value.copy(searching = true, error = null)
+            try {
+                val status = syncRepository.inviteByEmail(groupId, email)
+                addMember.value = AddMemberState(
+                    visible = true,
+                    error = when (status) {
+                        "sent" -> "Invite email sent ✓"
+                        "logged" -> "Invite link generated — email sending isn't configured on the server yet"
+                        null -> "They haven't signed up, so there's no account to invite by email"
+                        else -> status
+                    },
+                )
+            } catch (e: Exception) {
+                addMember.value = addMember.value.copy(searching = false, error = e.message ?: "Couldn't send invite")
             }
         }
     }

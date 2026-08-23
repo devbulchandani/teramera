@@ -22,12 +22,16 @@ data class CreateExpenseRequestDto(
     val groupId: String?,
     val title: String,
     val amountMinor: Long,
-    val paidByUserId: String,
+    val paidByUserId: String? = null,
     val splitType: String,
-    val participants: Map<String, Long>,
+    val participants: Map<String, Long>? = null,
+    val participantIds: List<String>? = null,
+    val payments: List<PaymentDto>? = null,
     val currency: String? = null,
     val fxRateToGroup: Double? = null,
 )
+
+data class PaymentDto(val userId: String, val amountMinor: Long)
 
 data class CreateExpenseResponseDto(val id: String, val amountMinor: Long, val shareCount: Int)
 
@@ -93,11 +97,25 @@ interface LedgerApi {
     @GET("users/find")
     suspend fun findUser(@Query("phone") phone: String): FoundUserDto
 
+    @GET("users/find")
+    suspend fun findUserByEmail(@Query("email") email: String): FoundUserDto
+
     @POST("groups/{groupId}/members")
     suspend fun addMember(
         @Path("groupId") groupId: String,
         @Body body: AddMemberRequestDto,
     ): Map<String, String>
+
+    @POST("groups/{groupId}/join")
+    suspend fun joinGroup(@Path("groupId") groupId: String): Map<String, String>
+
+    @POST("groups/{groupId}/invite-email")
+    suspend fun inviteByEmail(
+        @Path("groupId") groupId: String,
+        @Body body: InviteEmailRequestDto,
+    ): Map<String, String>
+
+    data class InviteEmailRequestDto(val email: String)
 
     @GET("groups/{groupId}/detail")
     suspend fun groupDetail(@Path("groupId") groupId: String): GroupDetailDto

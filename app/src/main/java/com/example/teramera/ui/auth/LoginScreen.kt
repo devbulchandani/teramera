@@ -60,6 +60,21 @@ fun LoginScreen(
             modifier = Modifier.padding(top = 8.dp, bottom = 32.dp),
         )
 
+        // Google first — the primary way in
+        GoogleSignInButton(
+            enabled = !state.loading,
+            webClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID,
+            onIdToken = { idToken -> viewModel.googleLogin(idToken, onLoggedIn) },
+            onError = viewModel::googleError,
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "or use your phone number",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+
         when (state.step) {
             LoginStep.Phone -> {
                 OutlinedTextField(
@@ -104,13 +119,7 @@ fun LoginScreen(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-        GoogleSignInButton(
-            enabled = !state.loading,
-            webClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID,
-            onIdToken = { idToken -> viewModel.googleLogin(idToken, onLoggedIn) },
-            onError = viewModel::googleError,
-        )
+
 
         state.error?.let {
             Spacer(Modifier.height(12.dp))

@@ -25,6 +25,23 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Group invite links: teramera://invite/<id> and https://…workers.dev/invite/<id> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="teramera" android:host="invite" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="teramera-api.devbulchandani876.workers.dev"
+                    android:pathPrefix="/invite"
+                    android:scheme="https" />
+            </intent-filter>
         </activity>
     </application>
 

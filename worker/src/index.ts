@@ -14,6 +14,10 @@ interface Env {
     JWT_SECRET: string;
     GOOGLE_CLIENT_ID?: string;
     EXPOSE_DEV_OTP?: string;
+    RESEND_API_KEY?: string;
+    INVITE_FROM_EMAIL?: string;
+    APP_BASE_URL?: string;
+    APK_DOWNLOAD_URL?: string;
 }
 
 type AppEnv = { Bindings: Env; Variables: { userId: string } };
@@ -46,7 +50,7 @@ type Row = Record<string, any>;
 app.use("*", cors());
 
 app.use(async (c, next) => {
-    if (c.req.path.startsWith("/auth/") || c.req.path === "/") return next();
+    if (c.req.path.startsWith("/auth/") || c.req.path === "/" || c.req.path.startsWith("/invite/")) return next();
     const header = c.req.header("Authorization");
     if (!header?.startsWith("Bearer ")) {
         return c.json({ message: "unauthorized" }, 401);
@@ -298,16 +302,109 @@ app.post("/groups", async (c) => {
 
 /** Find a teramera user by phone — how friends discover each other. */
 app.get("/users/find", async (c) => {
-    const phone = normalizePhone(c.req.query("phone") ?? "");
-    if (!phone) return jsonError(c, 400, "Phone must be in E.164 format");
-    const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE phone = ?", phone);
-    if (!user) return jsonError(c, 404, "No teramera user with that number yet");
+    const phone = c.req.query("phone");
+    const email = c.req.query("email");
+    let user: UserRow | undefined;
+    if (email) {
+        [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE email = ?", email.trim().toLowerCase());
+        if (!user) return jsonError(c, 404, "No teramera user with that email yet");
+    } else {
+        const normalized = normalizePhone(phone ?? "");
+        if (!normalized) return jsonError(c, 400, "Provide a valid +E.164 phone or an email");
+        [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE phone = ?", normalized);
+        if (!user) return jsonError(c, 404, "No teramera user with that number yet");
+    }
     return c.json({
         id: user.id,
         name: user.name ?? "",
-        phone: user.phone,
+        phone: user.phone ?? "",
         email: user.email ?? "",
     });
+});
+
+/** Caller joins a group themselves (invite links). */
+app.post("/groups/:groupId/join", async (c) => {
+    const groupId = c.req.param("groupId");
+    const userId = c.get("userId");
+    const [group] = await rows<GroupRow>(c, "SELECT id FROM groups WHERE id = ?", groupId);
+    if (!group) return jsonError(c, 404, "Group not found");
+    await run(
+        c,
+        "INSERT OR IGNORE INTO memberships (group_id, user_id, role) VALUES (?, ?, 'member')",
+        groupId, userId,
+    );
+    return c.json({ status: "joined" });
+});
+
+/**
+ * Email invite. Sends via Resend when RESEND_API_KEY is set; otherwise logs.
+ * The invite link opens /invite/:id — a landing page that deep-links into the
+ * app and offers the APK download as fallback.
+ */
+app.post("/groups/:groupId/invite-email", async (c) => {
+    const groupId = c.req.param("groupId");
+    const userId = c.get("userId");
+    await requireMember(c, groupId, userId);
+
+    const body = await c.req.json<{ email?: string }>();
+    if (!body.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) {
+        return jsonError(c, 400, "Valid email required");
+    }
+    const [inviter] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", userId);
+    const [group] = await rows<GroupRow>(c, "SELECT name FROM groups WHERE id = ?", groupId);
+    const link = `${c.env.APP_BASE_URL ?? `https://${c.req.header("host")}`}/invite/${groupId}`;
+    const inviterName = inviter?.name ?? "A friend";
+    const html = `
+      <p>${inviterName} added you to <b>${group.name}</b> on teramera — split expenses with friends.</p>
+      <p><a href="${link}">Open your invite</a> to join the group${body.email.includes("@") ? "" : ""}.</p>
+      <p>If you don't have the app yet, that page will get you set up first.</p>`;
+
+    if (c.env.RESEND_API_KEY) {
+        const resp = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${c.env.RESEND_API_KEY}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                from: c.env.INVITE_FROM_EMAIL || "teramera <onboarding@resend.dev>",
+                to: body.email,
+                subject: `${inviterName} invited you to ${group.name} on teramera`,
+                html,
+            }),
+        });
+        if (!resp.ok) {
+            console.error("Resend send failed", await resp.text());
+            return jsonError(c, 502, "Invite email failed to send");
+        }
+        return c.json({ status: "sent" });
+    }
+    console.log(`[EMAIL to ${body.email}] invite link: ${link}\n${html}`);
+    return c.json({ status: "logged", link });
+});
+
+/** Public landing for invite links. */
+app.get("/invite/:groupId", async (c) => {
+    const groupId = c.req.param("groupId");
+    const apkUrl = c.env.APK_DOWNLOAD_URL || "";
+    const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>teramera invite</title>
+<style>
+ body{font-family:-apple-system,system-ui,sans-serif;background:#FBF9F4;color:#251C15;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+ .card{max-width:360px;text-align:center;padding:32px}
+ .logo{font-size:44px;font-weight:800;letter-spacing:-2px}
+ .tere{color:#825EA9}.mera{color:#00848B}
+ a.btn{display:inline-block;margin-top:20px;padding:14px 26px;border-radius:16px;background:#00848B;color:#fff;text-decoration:none;font-weight:700}
+ small{color:#877F75;display:block;margin-top:14px;line-height:1.5}
+</style></head>
+<body><div class="card">
+ <div class="logo"><span class="tere">tere</span><span class="mera">mera</span></div>
+ <p>You've been invited to a group. Open the app to join.</p>
+ <a class="btn" href="intent://invite/${groupId}#Intent;scheme=teramera;package=com.example.teramera;S.browser_fallback_url=${encodeURIComponent(apkUrl)};end">Join the group</a>
+ ${apkUrl ? `<small>No app yet? The same button will offer the download.</small>` : `<small>The app will open if installed. Ask your friend for the APK meanwhile.</small>`}
+</div></body></html>`;
+    return c.html(html);
 });
 
 /** Add an existing user to a group. */
@@ -474,66 +571,122 @@ app.post("/expenses", async (c) => {
         amountMinor?: number;
         paidByUserId?: string;
         splitType?: SplitType;
-        participants?: Record<string, number>;
+        participants?: Record<string, number> | string[];
+        payments?: { userId: string; amountMinor: number }[];
         currency?: string;
         fxRateToGroup?: number;
     }>();
 
     if (!body.title?.trim()) return jsonError(c, 400, "title is required");
     if (!body.amountMinor || body.amountMinor <= 0) return jsonError(c, 400, "Amount must be positive");
-    if (!body.paidByUserId) return jsonError(c, 400, "paidByUserId is required");
     const ALLOWED_TYPES: SplitType[] = ["EQUAL", "EXACT", "PERCENT", "SHARES"];
     if (!body.splitType || !ALLOWED_TYPES.includes(body.splitType)) {
         return jsonError(c, 400, "splitType must be EQUAL, EXACT, PERCENT or SHARES");
     }
-
-    const payerIsSelf = body.paidByUserId === userId;
     if (body.groupId) await requireMember(c, body.groupId, userId);
 
-    // EQUAL with no explicit participants → everyone in the group (how the app sends it)
-    let participantIds: string[];
-    if ((!body.participants || Object.keys(body.participants).length === 0)) {
-        if (!body.groupId) return jsonError(c, 400, "At least two people required");
-        participantIds = (await rows<{ user_id: string }>(c, "SELECT user_id FROM memberships WHERE group_id = ?", body.groupId))
-            .map((r) => r.user_id);
-    } else {
-        participantIds = [...Object.keys(body.participants), body.paidByUserId];
-        if (participantIds.length < 2) return jsonError(c, 400, "At least two people required");
+    // ---- payers: payments[] wins over legacy single paidByUserId ----
+    let payments = (body.payments ?? []).filter((p) => p.userId && p.amountMinor > 0);
+    if (payments.length === 0) {
+        if (!body.paidByUserId) return jsonError(c, 400, "paidByUserId or payments is required");
+        payments = [{ userId: body.paidByUserId, amountMinor: body.amountMinor }];
     }
-    if (!payerIsSelf && !body.groupId) {
-        // direct expenses between friends require both to exist
-        for (const pid of participantIds) {
-            const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", pid);
-            if (exists.length === 0) return jsonError(c, 400, `Unknown participant: ${pid}`);
+    const paymentTotal = payments.reduce((acc, p) => acc + p.amountMinor, 0);
+    if (paymentTotal !== body.amountMinor) {
+        return jsonError(c, 400, "Payer amounts do not sum to the total");
+    }
+
+    // ---- participants: array of ids | legacy map | default all group members ----
+    let participantIds: string[];
+    if (Array.isArray(body.participants)) {
+        participantIds = body.participants.filter(Boolean);
+    } else if (body.participants && Object.keys(body.participants).length > 0) {
+        participantIds = [...Object.keys(body.participants), ...payments.map((p) => p.userId)];
+    } else if (body.groupId) {
+        participantIds = (
+            await rows<{ user_id: string }>(c, "SELECT user_id FROM memberships WHERE group_id = ?", body.groupId)
+        ).map((r) => r.user_id);
+    } else {
+        return jsonError(c, 400, "At least two people required");
+    }
+    participantIds = [...new Set(participantIds)];
+    if (participantIds.length < 2) return jsonError(c, 400, "At least two people required");
+
+    // everyone involved must exist
+    for (const pid of [...new Set([...participantIds, ...payments.map((p) => p.userId)])]) {
+        const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", pid);
+        if (exists.length === 0) return jsonError(c, 400, `Unknown user: ${pid}`);
+    }
+    // all payers of a group expense must be members
+    if (body.groupId) {
+        const memberRows = await rows<{ user_id: string }>(
+            c, "SELECT user_id FROM memberships WHERE group_id = ?", body.groupId,
+        );
+        const memberSet = new Set(memberRows.map((r) => r.user_id));
+        for (const p of payments) {
+            if (!memberSet.has(p.userId)) return jsonError(c, 403, `Payer is not a group member: ${p.userId}`);
         }
     }
 
-    const result = computeSplit({
+    // ---- total share per participant, then allocate each payment pro-rata ----
+    const rawValues: Record<string, number> =
+        !Array.isArray(body.participants) && body.participants ? body.participants : {};
+    const totalSplit = computeSplit({
         type: body.splitType,
         totalMinor: body.amountMinor,
         participants: participantIds,
-        rawValues: body.participants ?? {},
+        rawValues,
     });
-    if (!result.ok) return jsonError(c, 400, result.reason);
+    if (!totalSplit.ok) return jsonError(c, 400, totalSplit.reason);
+    const totalShares = totalSplit.shares;
 
-    const id = crypto.randomUUID();
+    function largestRemainderAllocate(bucket: number): Map<string, number> {
+        const base = new Map<string, number>();
+        let allocated = 0;
+        for (const share of totalShares) {
+            const v = Math.floor((bucket * share.amountMinor) / body.amountMinor!);
+            base.set(share.userId, v);
+            allocated += v;
+        }
+        let remainder = bucket - allocated;
+        const order = [...totalShares].sort((a, b) =>
+            ((bucket * b.amountMinor) % body.amountMinor!) - ((bucket * a.amountMinor) % body.amountMinor!),
+        );
+        for (const share of order) {
+            if (remainder <= 0) break;
+            base.set(share.userId, (base.get(share.userId) ?? 0) + 1);
+            remainder--;
+        }
+        return base;
+    }
+
     const createdAt = Date.now();
-    await run(
-        c,
-        `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, body.groupId ?? null, body.paidByUserId, body.title.trim(),
-        result.shares.reduce((acc, s) => acc + s.amountMinor, 0),
-        body.splitType, body.currency ?? "INR", body.fxRateToGroup ?? 1.0, createdAt,
-    );
-    for (const share of result.shares) {
+    const createdIds: string[] = [];
+    for (const payment of payments) {
+        const id = crypto.randomUUID();
+        const allocation = payments.length === 1
+            ? new Map(totalShares.map((s) => [s.userId, s.amountMinor]))
+            : largestRemainderAllocate(payment.amountMinor);
         await run(
             c,
-            "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) VALUES (?, ?, ?)",
-            id, share.userId, share.amountMinor,
+            `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            id, body.groupId ?? null, payment.userId, body.title.trim(),
+            payment.amountMinor, body.splitType, body.currency ?? "INR",
+            body.fxRateToGroup ?? 1.0, createdAt,
         );
+        for (const [uid, minor] of allocation.entries()) {
+            if (minor > 0) {
+                await run(
+                    c,
+                    "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) VALUES (?, ?, ?)",
+                    id, uid, minor,
+                );
+            }
+        }
+        createdIds.push(id);
     }
-    return c.json({ id, amountMinor: body.amountMinor, shareCount: result.shares.length });
+    return c.json({ id: createdIds[0], count: createdIds.length, amountMinor: body.amountMinor });
 });
 
 // ---------- settlements ----------

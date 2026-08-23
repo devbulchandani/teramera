@@ -57,6 +57,7 @@ fun GroupDetailScreen(
             state = addMemberState,
             onFind = viewModel::findFriend,
             onConfirm = viewModel::confirmAddMember,
+            onInviteByEmail = viewModel::inviteByEmail,
             onDismiss = viewModel::dismissAddMember,
         )
     }
@@ -357,6 +358,7 @@ private fun AddMemberDialog(
     state: com.example.teramera.ui.groups.AddMemberState,
     onFind: (String) -> Unit,
     onConfirm: (String) -> Unit,
+    onInviteByEmail: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var phone by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
@@ -369,22 +371,33 @@ private fun AddMemberDialog(
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
-                    label = { Text("Friend's number (+91…)") },
+                    label = { Text("Phone (+91…) or email") },
                     singleLine = true,
                     enabled = state.found == null,
                 )
                 Spacer(Modifier.height(8.dp))
                 when {
                     state.found != null -> Text(
-                        "Found: ${state.found!!.name.ifBlank { state.found!!.phone ?: "user" }}",
+                        "Found: ${state.found!!.name.ifBlank { state.found!!.phone ?: state.found!!.email ?: "user" }}",
                         color = MaterialTheme.colorScheme.tertiary,
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    state.error != null -> Text(
-                        state.error,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    state.error != null -> Column {
+                        Text(
+                            state.error!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        // not on teramera yet + we have their email → send an invite email
+                        if (state.error!!.startsWith("No teramera user with that email") &&
+                            phone.contains("@")
+                        ) {
+                            androidx.compose.material3.TextButton(
+                                onClick = { onInviteByEmail(phone.trim()) },
+                                enabled = !state.searching,
+                            ) { Text("Email them an invite link") }
+                        }
+                    }
                 }
             }
         },
@@ -392,7 +405,7 @@ private fun AddMemberDialog(
             if (state.found == null) {
                 androidx.compose.material3.TextButton(
                     onClick = { onFind(phone.trim()) },
-                    enabled = !state.searching && phone.length >= 8,
+                    enabled = !state.searching && phone.trim().length >= 5,
                 ) {
                     Text(if (state.searching) "Searching…" else "Find")
                 }

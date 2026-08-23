@@ -82,7 +82,9 @@ fun AddExpenseSheet(
             when (draft.step) {
                 1 -> AmountStep(state, viewModel)
                 2 -> DetailsStep(state, viewModel)
-                else -> ParticipantsStep(state, viewModel, onSaved = onDismiss)
+                else ->
+                    if (state.serverMode) ServerParticipantsStep(state, viewModel, onSaved = onDismiss)
+                    else ParticipantsStep(state, viewModel, onSaved = onDismiss)
             }
         }
     }
@@ -293,12 +295,7 @@ private fun DetailsStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel
 
             Spacer(Modifier.height(20.dp))
             if (state.serverMode) {
-                Text(
-                    "Split equally between all group members.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
+                ServerSplitSection(state = state, viewModel = viewModel)
             } else {
                 SectionLabel("Split by")
                 SplitTypeSelector(selected = state.draft.splitType, onSelect = viewModel::setSplitType)
@@ -633,3 +630,155 @@ private fun nameOf(state: AddExpenseUiState, userId: String) =
 
 private fun initialsOf(name: String): String =
     name.split(" ").filter { it.isNotBlank() }.take(2).map { it.first().uppercaseChar() }.joinToString("")
+
+
+// ---------- server-mode sections ----------
+
+@Composable
+private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseViewModel) {
+    val members = state.serverMembers
+    if (members.isEmpty()) {
+        Text(
+            "Loading members…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+
+    SectionLabel("Paid by")
+    val activePayers = state.draft.payers.keys.ifEmpty {
+        setOfNotNull(state.selfServerId)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        members.chunked(3).forEach { rowMembers ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                rowMembers.forEach { member ->
+                    val selected = member.id in activePayers
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                            .clickable { viewModel.togglePayer(member.id) }
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                    ) {
+                        Text(memberLabel(member), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+    }
+
+    // per-payer amounts when more than one payer is selected
+    val editedPayers = state.draft.payers.filterValues { it > 0 }
+    if (activePayers.size > 1) {
+        Spacer(Modifier.height(8.dp))
+        (if (editedPayers.isNotEmpty()) editedPayers else state.draft.payers).forEach { (uid, minor) ->
+            val member = members.firstOrNull { it.id == uid }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(vertical = 4.dp),
+            ) {
+                Text("₹ from ${member?.let { memberLabel(it) } ?: uid}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    value = if (minor == 0L) "" else (minor / 100).toString(),
+                    onValueChange = { text -> viewModel.setPayerAmount(uid, (text.toLongOrNull() ?: 0L) * 100) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.width(120.dp),
+                )
+            }
+        }
+        val sum = state.draft.payers.values.sum()
+        Text(
+            text = if (sum == state.draft.amountMinor) "✓ adds up to ₹${formatInr(sum)}"
+            else "Adds up to ₹${formatInr(sum)} of ₹${formatInr(state.draft.amountMinor)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (sum == state.draft.amountMinor) MaterialTheme.colorScheme.tertiary
+            else MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+
+    Spacer(Modifier.height(16.dp))
+    SectionLabel("Split between")
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        members.chunked(3).forEach { rowMembers ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                rowMembers.forEach { member ->
+                    val included = member.id in state.draft.includedServer
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(
+                                if (included) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                            .clickable { viewModel.toggleParticipantServer(member.id) }
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                    ) {
+                        Text(memberLabel(member), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+    }
+    Text(
+        "${state.draft.includedServer.size} people · equal shares",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+}
+
+@Composable
+private fun ServerParticipantsStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel, onSaved: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+    ) {
+        Text(
+            "Review",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
+        val payers = state.draft.payers
+        val payerText = if (payers.isEmpty() || payers.size == 1 && payers.values.first() == state.draft.amountMinor) {
+            "Paid by you"
+        } else {
+            "Split payment: " + payers.entries.joinToString(" + ") { (uid, m) -> "₹${formatInr(m)}" } + " paid"
+        }
+        Text(payerText, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "${state.draft.includedServer.size} people split equally · saved to your teramera account",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
+        val payersSumOk = state.draft.payers.isEmpty() ||
+            state.draft.payers.values.sum() == state.draft.amountMinor
+        Button(
+            onClick = { viewModel.save(onDone = onSaved) },
+            enabled = !state.saving && state.draft.title.isNotBlank() &&
+                state.draft.amountMinor > 0 && state.draft.includedServer.size >= 2 && payersSumOk,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+                .height(56.dp),
+        ) {
+            Text("Save expense · ₹${formatInr(state.draft.amountMinor)}", style = MaterialTheme.typography.labelLarge)
+        }
+        state.error?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+private fun memberLabel(member: com.example.teramera.core.network.MemberDto): String =
+    if (member.isSelf) "You" else member.name.ifBlank { "Member" }
