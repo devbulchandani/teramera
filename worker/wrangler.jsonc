@@ -10,6 +10,9 @@
       "database_id": "26878f25-a063-43af-a925-cfd631369ef0"
     }
   ],
+  "assets": {
+    "directory": "./public"
+  },
   "vars": {
     "EXPOSE_DEV_OTP": "true"
   }

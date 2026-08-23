@@ -420,8 +420,8 @@ app.post("/groups/:groupId/invite-email", async (c) => {
 /** Public landing for invite links. */
 app.get("/invite/:groupId", async (c) => {
     const groupId = c.req.param("groupId");
-    const apkUrl = c.env.APK_DOWNLOAD_URL ||
-        "https://github.com/devbulchandani/teramera/releases/latest/download/teramera-v0.1.0.apk";
+    const origin = c.env.APP_BASE_URL || `https://${c.req.header("host")}`;
+    const apkUrl = c.env.APK_DOWNLOAD_URL || `${origin}/teramera.apk`;
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>teramera — group invite</title>
