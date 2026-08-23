@@ -32,6 +32,11 @@ class AuthRepository @Inject constructor(
         tokenStore.save(AuthTokens(tokens.accessToken, tokens.refreshToken, tokens.userId))
     }
 
+    suspend fun googleLogin(idToken: String): Result<Unit> = runCatching {
+        val tokens = authApi.googleLogin(com.example.teramera.core.network.GoogleLoginRequestDto(idToken))
+        tokenStore.save(AuthTokens(tokens.accessToken, tokens.refreshToken, tokens.userId))
+    }
+
     suspend fun logout() {
         tokenStore.clear()
         dao.clearSyncedBalances()

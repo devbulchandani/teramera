@@ -59,6 +59,21 @@ class LoginViewModel @Inject constructor(
         }
     }
 
+    fun googleLogin(idToken: String, onLoggedIn: () -> Unit) {
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, error = null) }
+            authRepository.googleLogin(idToken).fold(
+                onSuccess = { onLoggedIn() },
+                onFailure = { failure ->
+                    _state.update { it.copy(loading = false, error = friendly(failure)) }
+                },
+            )
+        }
+    }
+
+    fun googleError(message: String) =
+        _state.update { it.copy(loading = false, error = message) }
+
     private fun normalize(raw: String): String? {
         var cleaned = raw.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         if (!cleaned.startsWith("+")) return null

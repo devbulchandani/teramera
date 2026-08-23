@@ -296,6 +296,39 @@ app.post("/groups", async (c) => {
     return c.json({ id, name: body.name.trim(), currency: body.currency ?? "INR" });
 });
 
+/** Find a teramera user by phone — how friends discover each other. */
+app.get("/users/find", async (c) => {
+    const phone = normalizePhone(c.req.query("phone") ?? "");
+    if (!phone) return jsonError(c, 400, "Phone must be in E.164 format");
+    const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE phone = ?", phone);
+    if (!user) return jsonError(c, 404, "No teramera user with that number yet");
+    return c.json({
+        id: user.id,
+        name: user.name ?? "",
+        phone: user.phone,
+        email: user.email ?? "",
+    });
+});
+
+/** Add an existing user to a group. */
+app.post("/groups/:groupId/members", async (c) => {
+    const groupId = c.req.param("groupId");
+    const userId = c.get("userId");
+    await requireMember(c, groupId, userId);
+
+    const body = await c.req.json<{ userId?: string }>();
+    if (!body.userId) return jsonError(c, 400, "userId is required");
+    const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", body.userId);
+    if (!user) return jsonError(c, 404, "User not found");
+
+    await run(
+        c,
+        "INSERT OR IGNORE INTO memberships (group_id, user_id, role) VALUES (?, ?, 'member')",
+        groupId, body.userId,
+    );
+    return c.json({ status: "added", name: user.name ?? "" });
+});
+
 app.get("/groups", async (c) => {
     const userId = c.get("userId");
     const list = await rows<GroupRow>(
@@ -376,6 +409,24 @@ app.get("/groups/:groupId/detail", async (c) => {
 
     const balances = await groupBalances(c, groupId);
     const simplified = simplifyDebts(new Map(balances.map((b) => [b.userId, b.netMinor])));
+    const nameOf = async (uid: string) => {
+        const [u] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", uid);
+        return u?.name ?? "?";
+    };
+    const namedDebts = [];
+    for (const t of simplified.transfers) {
+        namedDebts.push({
+            fromUserId: t.fromUserId,
+            fromName: await nameOf(t.fromUserId),
+            toUserId: t.toUserId,
+            toName: await nameOf(t.toUserId),
+            amountMinor: t.amountMinor,
+        });
+    }
+    const namedBalances = [];
+    for (const b of balances) {
+        namedBalances.push({ userId: b.userId, name: await nameOf(b.userId), netMinor: b.netMinor });
+    }
 
     return c.json({
         id: group.id,
@@ -384,8 +435,8 @@ app.get("/groups/:groupId/detail", async (c) => {
         totalSpentMinor: expenses.reduce((acc, e) => acc + e.amount_minor, 0),
         members,
         expenses: expenseList,
-        balances,
-        simplifiedDebts: simplified.transfers,
+        balances: namedBalances,
+        simplifiedDebts: namedDebts,
     });
 });
 

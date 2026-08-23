@@ -3,6 +3,8 @@ package com.example.teramera.core.network
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
+import retrofit2.http.Query
 
 data class BalanceDto(val userId: String, val name: String, val netMinor: Long)
 data class GroupSummaryDto(
@@ -37,6 +39,40 @@ data class CreateSettlementRequestDto(
     val method: String,
 )
 
+// ---- friends & members ----
+
+data class FoundUserDto(val id: String, val name: String, val phone: String?, val email: String?)
+data class AddMemberRequestDto(val userId: String)
+data class MemberDto(val id: String, val name: String, val isSelf: Boolean)
+data class GroupExpenseDto(
+    val id: String,
+    val title: String,
+    val paidByUserId: String,
+    val amountMinor: Long,
+    val myShareMinor: Long,
+    val participantCount: Int,
+    val createdAt: Long,
+)
+
+data class DebtDto(
+    val fromUserId: String,
+    val fromName: String,
+    val toUserId: String,
+    val toName: String,
+    val amountMinor: Long,
+)
+
+data class GroupDetailDto(
+    val id: String,
+    val name: String,
+    val currency: String,
+    val totalSpentMinor: Long,
+    val members: List<MemberDto>,
+    val expenses: List<GroupExpenseDto>,
+    val balances: List<BalanceDto>,
+    val simplifiedDebts: List<DebtDto>,
+)
+
 interface LedgerApi {
 
     @GET("groups")
@@ -53,4 +89,16 @@ interface LedgerApi {
 
     @POST("settlements")
     suspend fun createSettlement(@Body body: CreateSettlementRequestDto): Map<String, String>
+
+    @GET("users/find")
+    suspend fun findUser(@Query("phone") phone: String): FoundUserDto
+
+    @POST("groups/{groupId}/members")
+    suspend fun addMember(
+        @Path("groupId") groupId: String,
+        @Body body: AddMemberRequestDto,
+    ): Map<String, String>
+
+    @GET("groups/{groupId}/detail")
+    suspend fun groupDetail(@Path("groupId") groupId: String): GroupDetailDto
 }

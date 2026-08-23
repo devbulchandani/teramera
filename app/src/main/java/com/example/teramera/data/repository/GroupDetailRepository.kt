@@ -8,7 +8,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 data class ExpenseLine(
-    val id: Long,
+    val id: String,
     val title: String,
     val payerName: String,
     val amountMinor: Long,
@@ -52,7 +52,7 @@ class GroupDetailRepository @Inject constructor(
             val lines = groupExpenses.map { expense ->
                 val expenseShares = sharesByExpense[expense.id].orEmpty()
                 ExpenseLine(
-                    id = expense.id,
+                    id = expense.id.toString(),
                     title = expense.title,
                     payerName = usersById[expense.paidByUserId]?.name ?: "?",
                     amountMinor = expense.amountMinor,

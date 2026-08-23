@@ -18,11 +18,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +49,17 @@ fun GroupDetailScreen(
     viewModel: GroupDetailViewModel = hiltViewModel(),
 ) {
     val detail by viewModel.detail.collectAsStateWithLifecycle()
+    val addMemberState by viewModel.addMemberState.collectAsStateWithLifecycle()
     val d = detail ?: return
+
+    if (addMemberState.visible) {
+        AddMemberDialog(
+            state = addMemberState,
+            onFind = viewModel::findFriend,
+            onConfirm = viewModel::confirmAddMember,
+            onDismiss = viewModel::dismissAddMember,
+        )
+    }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         androidx.compose.foundation.layout.Box(
@@ -60,6 +73,7 @@ fun GroupDetailScreen(
                     memberInitials = d.memberInitials,
                     totalSpentMinor = d.totalSpentMinor,
                     onBack = onBack,
+                    onAddMember = viewModel::showAddMember,
                 )
 
                 LazyColumn(
@@ -130,6 +144,7 @@ private fun GroupHeader(
     memberInitials: List<Pair<String, Boolean>>,
     totalSpentMinor: Long,
     onBack: () -> Unit,
+    onAddMember: () -> Unit,
 ) {
     val violet = MaterialTheme.colorScheme.secondary
     Column(
@@ -144,15 +159,27 @@ private fun GroupHeader(
             .background(violet)
             .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.16f))
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("←", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("←", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            }
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .clickable(onClick = onAddMember),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("+", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            }
         }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -322,5 +349,62 @@ private fun Hairline() {
             .fillMaxWidth()
             .height(1.dp)
             .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+}
+
+@Composable
+private fun AddMemberDialog(
+    state: com.example.teramera.ui.groups.AddMemberState,
+    onFind: (String) -> Unit,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var phone by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add member") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Friend's number (+91…)") },
+                    singleLine = true,
+                    enabled = state.found == null,
+                )
+                Spacer(Modifier.height(8.dp))
+                when {
+                    state.found != null -> Text(
+                        "Found: ${state.found!!.name.ifBlank { state.found!!.phone ?: "user" }}",
+                        color = MaterialTheme.colorScheme.tertiary,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    state.error != null -> Text(
+                        state.error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (state.found == null) {
+                androidx.compose.material3.TextButton(
+                    onClick = { onFind(phone.trim()) },
+                    enabled = !state.searching && phone.length >= 8,
+                ) {
+                    Text(if (state.searching) "Searching…" else "Find")
+                }
+            } else {
+                androidx.compose.material3.TextButton(
+                    onClick = { onConfirm(state.found!!.id) },
+                    enabled = !state.searching,
+                ) { Text("Add to group") }
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
     )
 }

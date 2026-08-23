@@ -16,6 +16,7 @@ data class AuthTokensDto(
 )
 
 data class AuthRefreshRequestDto(val refreshToken: String)
+data class GoogleLoginRequestDto(val idToken: String)
 
 interface AuthApi {
 
@@ -24,6 +25,9 @@ interface AuthApi {
 
     @POST("auth/otp/verify")
     suspend fun verifyOtp(@Body body: OtpVerifyRequestDto): AuthTokensDto
+
+    @POST("auth/google")
+    suspend fun googleLogin(@Body body: GoogleLoginRequestDto): AuthTokensDto
 
     @POST("auth/refresh")
     suspend fun refresh(@Body body: AuthRefreshRequestDto): AuthTokensDto

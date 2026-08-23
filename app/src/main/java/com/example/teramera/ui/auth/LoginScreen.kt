@@ -1,5 +1,8 @@
 package com.example.teramera.ui.auth
 
+import com.example.teramera.BuildConfig
+import kotlinx.coroutines.launch
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -101,10 +104,67 @@ fun LoginScreen(
             }
         }
 
+        Spacer(Modifier.height(12.dp))
+        GoogleSignInButton(
+            enabled = !state.loading,
+            webClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID,
+            onIdToken = { idToken -> viewModel.googleLogin(idToken, onLoggedIn) },
+            onError = viewModel::googleError,
+        )
+
         state.error?.let {
             Spacer(Modifier.height(12.dp))
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         }
+    }
+}
+
+@Composable
+private fun GoogleSignInButton(
+    enabled: Boolean,
+    webClientId: String,
+    onIdToken: (String) -> Unit,
+    onError: (String) -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    androidx.compose.material3.OutlinedButton(
+        onClick = {
+            if (webClientId.isBlank()) {
+                onError("Google sign-in isn't configured yet — add google.webClientId to local.properties")
+                return@OutlinedButton
+            }
+            scope.launch {
+                try {
+                    val manager = androidx.credentials.CredentialManager.create(context)
+                    val option = com.google.android.libraries.identity.googleid.GetGoogleIdOption.Builder()
+                        .setServerClientId(webClientId)
+                        .setFilterByAuthorizedAccounts(false)
+                        .build()
+                    val result = manager.getCredential(
+                        context,
+                        androidx.credentials.GetCredentialRequest.Builder()
+                            .addCredentialOption(option)
+                            .build(),
+                    )
+                    val idToken = (result.credential as? com.google.android.libraries.identity.googleid.GoogleIdTokenCredential)
+                        ?.idToken
+                        ?: throw IllegalStateException("Unexpected credential type")
+                    onIdToken(idToken)
+                } catch (_: androidx.credentials.exceptions.GetCredentialCancellationException) {
+                    // user closed the account picker — nothing to do
+                } catch (e: Exception) {
+                    onError(e.message ?: "Google sign-in failed")
+                }
+            }
+        },
+        enabled = enabled,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+    ) {
+        Text("Continue with Google", style = MaterialTheme.typography.labelLarge)
     }
 }
 
