@@ -18,6 +18,10 @@ interface Env {
     INVITE_FROM_EMAIL?: string;
     APP_BASE_URL?: string;
     APK_DOWNLOAD_URL?: string;
+    SMTP_HOST?: string;
+    SMTP_PORT?: string;
+    SMTP_USER?: string;
+    SMTP_PASS?: string;
 }
 
 type AppEnv = { Bindings: Env; Variables: { userId: string } };
@@ -359,6 +363,34 @@ app.post("/groups/:groupId/invite-email", async (c) => {
       <p><a href="${link}">Open your invite</a> to join the group${body.email.includes("@") ? "" : ""}.</p>
       <p>If you don't have the app yet, that page will get you set up first.</p>`;
 
+    const subject = `${inviterName} invited you to ${group.name} on teramera`;
+
+    // 1. SMTP (Gmail app password works without a domain)
+    if (c.env.SMTP_USER && c.env.SMTP_PASS) {
+        try {
+            const { sendSmtpMail } = await import("./smtp");
+            await sendSmtpMail(
+                {
+                    host: c.env.SMTP_HOST || "smtp.gmail.com",
+                    port: Number(c.env.SMTP_PORT || 587),
+                    username: c.env.SMTP_USER,
+                    password: c.env.SMTP_PASS,
+                },
+                {
+                    from: `teramera <${c.env.SMTP_USER}>`,
+                    to: body.email,
+                    subject,
+                    html,
+                },
+            );
+            return c.json({ status: "sent" });
+        } catch (err) {
+            console.error("SMTP send failed:", err);
+            return jsonError(c, 502, "Invite email failed to send");
+        }
+    }
+
+    // 2. Resend fallback
     if (c.env.RESEND_API_KEY) {
         const resp = await fetch("https://api.resend.com/emails", {
             method: "POST",
@@ -369,7 +401,7 @@ app.post("/groups/:groupId/invite-email", async (c) => {
             body: JSON.stringify({
                 from: c.env.INVITE_FROM_EMAIL || "teramera <onboarding@resend.dev>",
                 to: body.email,
-                subject: `${inviterName} invited you to ${group.name} on teramera`,
+                subject,
                 html,
             }),
         });
@@ -379,6 +411,8 @@ app.post("/groups/:groupId/invite-email", async (c) => {
         }
         return c.json({ status: "sent" });
     }
+
+    // 3. No mail provider configured
     console.log(`[EMAIL to ${body.email}] invite link: ${link}\n${html}`);
     return c.json({ status: "logged", link });
 });
@@ -787,3 +821,4 @@ function jsonError(c: any, status: any, message: string) {
 }
 
 export default app;
+
