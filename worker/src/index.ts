@@ -8,6 +8,8 @@ import {
     verifyAccessToken,
 } from "./crypto";
 import { computeSplit, simplifyDebts, SplitType } from "./split";
+import { sendMail } from "./mail";
+import { hashOtp as pbkdf2Hash } from "./crypto";
 
 interface Env {
     DB: D1Database;
@@ -100,6 +102,7 @@ interface UserRow {
     email: string | null;
     name: string | null;
     avatar_url: string | null;
+    email_verified?: number;
 }
 
 async function issueTokens(c: any, user: UserRow) {
@@ -213,6 +216,139 @@ app.post("/auth/google", async (c) => {
         users = [{ id, phone: null, email: claims.email, name: claims.name ?? null, avatar_url: claims.picture ?? null }];
     }
     return c.json(await issueTokens(c, users[0]));
+});
+
+// ---------- email + password auth ----------
+
+function validEmail(email: string): boolean {
+    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+}
+
+app.post("/auth/email/check", async (c) => {
+    const body = await c.req.json<{ email?: string }>();
+    const email = (body.email ?? "").trim().toLowerCase();
+    if (!validEmail(email)) return jsonError(c, 400, "Valid email required");
+    const [user] = await rows<Row>(c, "SELECT email_verified FROM users WHERE email = ?", email);
+    return c.json({ exists: !!user, verified: !!user && user.email_verified === 1 });
+});
+
+app.post("/auth/email/register", async (c) => {
+    const body = await c.req.json<{ email?: string; password?: string }>();
+    const email = (body.email ?? "").trim().toLowerCase();
+    const password = body.password ?? "";
+    if (!validEmail(email)) return jsonError(c, 400, "Valid email required");
+    if (password.length < 8) return jsonError(c, 400, "Password must be at least 8 characters");
+
+    let users = await rows<UserRow>(c, "SELECT * FROM users WHERE email = ?", email);
+    if (users.length > 0 && users[0].email_verified === 1) {
+        return jsonError(c, 400, "Account already exists — sign in instead");
+    }
+
+    const passwordHash = await pbkdf2Hash(password);
+    if (users.length === 0) {
+        const id = crypto.randomUUID();
+        await run(
+            c,
+            "INSERT INTO users (id, email, password_hash, email_verified, created_at) VALUES (?, ?, ?, 0, ?)",
+            id, email, passwordHash, Date.now(),
+        );
+        users = [{ id, phone: null, email, name: null, avatar_url: null }];
+    } else {
+        // unverified account re-registering: update their password
+        await run(c, "UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, users[0].id);
+    }
+
+    // email verification OTP
+    const now = Date.now();
+    await run(c, "UPDATE otp_requests SET consumed = 1 WHERE phone = ? AND consumed = 0", email);
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const requestId = crypto.randomUUID();
+    await run(
+        c,
+        "INSERT INTO otp_requests (id, phone, code_hash, expires_at, attempts, consumed, created_at) VALUES (?, ?, ?, ?, 0, 0, ?)",
+        requestId, email, await hashOtp(code), now + OTP_TTL_MILLIS, now,
+    );
+    const status = await sendMail(
+        c.env, email,
+        "Your teramera verification code",
+        `<p>Your teramera code is <b style="font-size:24px;letter-spacing:4px">${code}</b>. It expires in 5 minutes.</p>`,
+        `Your teramera code is ${code}. It expires in 5 minutes.`,
+    );
+
+    const response: Record<string, unknown> = { requestId };
+    if (status === "logged") response.devCode = code;
+    if (c.env.EXPOSE_DEV_OTP === "true" && !response.devCode) response.devCode = code;
+    return c.json(response);
+});
+
+app.post("/auth/email/login", async (c) => {
+    const body = await c.req.json<{ email?: string; password?: string }>();
+    const email = (body.email ?? "").trim().toLowerCase();
+    const [user] = await rows<Row>(
+        c,
+        "SELECT * FROM users WHERE email = ? AND password_hash IS NOT NULL",
+        email,
+    );
+    if (!user || (await pbkdf2Hash(body.password ?? "")) !== user.password_hash) {
+        return jsonError(c, 401, "Incorrect email or password");
+    }
+    if (user.email_verified !== 1) {
+        return c.json({ message: "Email not verified yet", code: "UNVERIFIED" }, 403);
+    }
+    return c.json(await issueTokens(c, user as UserRow));
+});
+
+/** Passwordless login OR re-verification via emailed code. */
+app.post("/auth/email/otp", async (c) => {
+    const body = await c.req.json<{ email?: string }>();
+    const email = (body.email ?? "").trim().toLowerCase();
+    if (!validEmail(email)) return jsonError(c, 400, "Valid email required");
+
+    const [user] = await rows<Row>(c, "SELECT * FROM users WHERE email = ?", email);
+    if (!user) return jsonError(c, 404, "No teramera account with that email");
+
+    const now = Date.now();
+    await run(c, "UPDATE otp_requests SET consumed = 1 WHERE phone = ? AND consumed = 0", email);
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const requestId = crypto.randomUUID();
+    await run(
+        c,
+        "INSERT INTO otp_requests (id, phone, code_hash, expires_at, attempts, consumed, created_at) VALUES (?, ?, ?, ?, 0, 0, ?)",
+        requestId, email, await hashOtp(code), now + OTP_TTL_MILLIS, now,
+    );
+    const status = await sendMail(
+        c.env, email,
+        "Your teramera sign-in code",
+        `<p>Your teramera code is <b style="font-size:24px;letter-spacing:4px">${code}</b>. It expires in 5 minutes.</p>`,
+        `Your teramera code is ${code}. It expires in 5 minutes.`,
+    );
+
+    const response: Record<string, unknown> = { requestId };
+    if (status === "logged") response.devCode = code;
+    if (c.env.EXPOSE_DEV_OTP === "true" && !response.devCode) response.devCode = code;
+    return c.json(response);
+});
+
+app.post("/auth/email/verify", async (c) => {
+    const body = await c.req.json<{ requestId?: string; code?: string }>();
+    if (!body.requestId || !body.code) return jsonError(c, 400, "requestId and code are required");
+    const now = Date.now();
+    const [row] = await rows<Row>(c, "SELECT * FROM otp_requests WHERE id = ?", body.requestId);
+    if (!row || row.consumed === 1) return jsonError(c, 400, "Code already used. Request a new one.");
+    if ((row.expires_at as number) < now) return jsonError(c, 400, "Code expired. Request a new one.");
+    if ((row.attempts as number) >= OTP_MAX_ATTEMPTS) {
+        return jsonError(c, 400, "Too many wrong attempts. Request a new code.");
+    }
+    if ((await hashOtp(body.code)) !== row.code_hash) {
+        await run(c, "UPDATE otp_requests SET attempts = ? WHERE id = ?", row.attempts + 1, body.requestId);
+        return jsonError(c, 400, "Incorrect code.");
+    }
+    await run(c, "UPDATE otp_requests SET consumed = 1 WHERE id = ?", body.requestId);
+
+    const email = row.phone as string;
+    await run(c, "UPDATE users SET email_verified = 1 WHERE email = ?", email);
+    const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE email = ?", email);
+    return c.json(await issueTokens(c, user));
 });
 
 app.post("/auth/refresh", async (c) => {
@@ -364,57 +500,14 @@ app.post("/groups/:groupId/invite-email", async (c) => {
       <p>If you don't have the app yet, that page will get you set up first.</p>`;
 
     const subject = `${inviterName} invited you to ${group.name} on teramera`;
-
-    // 1. SMTP (Gmail app password works without a domain)
-    if (c.env.SMTP_USER && c.env.SMTP_PASS) {
-        try {
-            const { sendSmtpMail } = await import("./smtp");
-            await sendSmtpMail(
-                {
-                    host: c.env.SMTP_HOST || "smtp.gmail.com",
-                    port: Number(c.env.SMTP_PORT || 587),
-                    username: c.env.SMTP_USER,
-                    password: c.env.SMTP_PASS,
-                },
-                {
-                    from: `teramera <${c.env.SMTP_USER}>`,
-                    to: body.email,
-                    subject,
-                    html,
-                },
-            );
-            return c.json({ status: "sent" });
-        } catch (err) {
-            console.error("SMTP send failed:", err);
-            return jsonError(c, 502, "Invite email failed to send");
-        }
-    }
-
-    // 2. Resend fallback
-    if (c.env.RESEND_API_KEY) {
-        const resp = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${c.env.RESEND_API_KEY}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                from: c.env.INVITE_FROM_EMAIL || "teramera <onboarding@resend.dev>",
-                to: body.email,
-                subject,
-                html,
-            }),
-        });
-        if (!resp.ok) {
-            console.error("Resend send failed", await resp.text());
-            return jsonError(c, 502, "Invite email failed to send");
-        }
+    try {
+        await sendMail(c.env, body.email, subject, html,
+            `${inviterName} invited you to ${group.name} on teramera. Open your invite link: ${link}`);
         return c.json({ status: "sent" });
+    } catch (err) {
+        console.error("Invite email failed:", err);
+        return jsonError(c, 502, "Invite email failed to send");
     }
-
-    // 3. No mail provider configured
-    console.log(`[EMAIL to ${body.email}] invite link: ${link}\n${html}`);
-    return c.json({ status: "logged", link });
 });
 
 /** Public landing for invite links. */

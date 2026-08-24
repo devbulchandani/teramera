@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera — Auth v3 (Google + Email)</title>
+<link rel="stylesheet" href="../../design-systems/teramera-product/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: oklch(0.88 0.01 80);
+    font-family: var(--font-ui);
+    color: var(--ink-1);
+    display: flex; flex-direction: column; align-items: center;
+    gap: var(--sp-5);
+    padding: var(--sp-8) var(--sp-4);
+    min-height: 100vh;
+  }
+  .stage-note { text-align: center; color: var(--ink-2); font-size: 14px; margin-bottom: var(--sp-3); }
+  .stage-note strong { font-family: var(--font-display); font-size: 20px; color: var(--ink-1); display: block; }
+  .row { display: flex; gap: var(--sp-6); flex-wrap: wrap; justify-content: center; }
+
+  .phone {
+    width: 390px; height: 780px;
+    background: var(--bg-1);
+    border-radius: 44px;
+    box-shadow: 0 24px 60px oklch(0.235 0.02 60 / 0.28), 0 0 0 10px oklch(0.2 0.01 60), 0 0 0 12px oklch(0.35 0.01 60);
+    overflow: hidden; position: relative;
+    display: flex; flex-direction: column;
+  }
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 28px 6px; font-size: 14px; font-weight: 600; }
+
+  /* ---------- shared auth layout ---------- */
+  .auth { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 28px 24px; }
+  .wordmark { font-family: var(--font-display); font-weight: 800; font-size: 46px; letter-spacing: -2px; line-height: 1; text-align: center; }
+  .wordmark .tere { color: var(--accent-2); }
+  .wordmark .mera { color: var(--accent-1); }
+  .tagline {
+    text-align: center; font-size: 15px; color: var(--ink-2); line-height: 1.5;
+    margin: 14px auto 32px; max-width: 260px;
+  }
+  .btn-google {
+    width: 100%; min-height: 56px; border-radius: 16px; border: 0; cursor: pointer;
+    background: var(--accent-1); color: white;
+    font-family: var(--font-ui); font-size: 15.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    box-shadow: var(--shadow-float);
+    transition: transform var(--t-fast);
+  }
+  .btn-google:active { transform: scale(0.98); }
+  .divider {
+    display: flex; align-items: center; gap: 14px;
+    margin: 22px 0; color: var(--ink-3); font-size: 13px; font-weight: 500;
+  }
+  .divider::before, .divider::after { content: ""; height: 1px; flex: 1; background: var(--border-subtle); }
+  .link-btn {
+    width: 100%; min-height: 52px; border-radius: 16px; border: 1.5px solid var(--border-strong);
+    background: transparent; cursor: pointer;
+    font-family: var(--font-ui); font-size: 15px; font-weight: 600; color: var(--ink-1);
+    transition: all var(--t-fast); min-width: 0;
+  }
+  .field-label { font-size: 13px; font-weight: 700; color: var(--ink-2); margin: 18px 0 6px; }
+  .input {
+    width: 100%; min-height: 52px; border-radius: 14px;
+    background: var(--bg-2); border: 1.5px solid var(--border-subtle);
+    padding: 14px 16px; font-family: var(--font-ui); font-size: 15px; color: var(--ink-1);
+    outline: none; transition: border-color var(--t-fast); width: 100%;
+  }
+  .input:focus { border-color: var(--accent-1); box-shadow: 0 0 0 3px var(--accent-1-soft); }
+  .btn-primary {
+    width: 100%; min-height: 56px; border-radius: 16px; border: 0; cursor: pointer;
+    background: var(--accent-1); color: white;
+    font-family: var(--font-ui); font-size: 15.5px; font-weight: 700; margin-top: 20px;
+    transition: transform var(--t-fast), opacity var(--t-fast);
+  }
+  .text-link {
+    display: block; text-align: center; margin-top: 16px;
+    background: none; border: 0; cursor: pointer; width: 100%;
+    font-family: var(--font-ui); font-size: 13.5px; font-weight: 600; color: var(--accent-2);
+  }
+  .error {
+    background: var(--neg-soft); color: #7f1d1d;
+    border-radius: 12px; padding: 10px 14px;
+    font-size: 13px; line-height: 1.45; margin-top: 16px;
+  }
+  .back-row { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+  .back-circle {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--bg-3); display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 600; cursor: pointer;
+  }
+  .step-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+  .otp-hint { font-size: 14px; color: var(--ink-2); line-height: 1.45; margin-top: 6px; }
+  .code-boxes { display: flex; gap: 9px; margin-top: 24px; }
+  .code-box {
+    flex: 1; height: 58px; border-radius: 14px;
+    background: var(--bg-2); border: 1.5px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display); font-size: 22px; font-weight: 700;
+  }
+  .code-box.filled { background: var(--bg-1); border-color: var(--border-strong); }
+  .code-box.active { border-color: var(--accent-1); box-shadow: 0 0 0 3px var(--accent-1-soft); }
+</style>
+</head>
+<body>
+
+<div class="stage-note">
+  <strong>teramera · Auth v3</strong>
+  Google primary · email+password with email-code verification · passwordless code login
+</div>
+
+<div class="row">
+
+  <!-- SCREEN 1: entry -->
+  <div class="phone">
+    <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+    <div class="auth">
+      <div class="wordmark"><span class="tere">tere</span><span class="mera">mera</span></div>
+      <p class="tagline">Money between friends, split fairly and settled simply.</p>
+
+      <button class="btn-google">
+        <svg viewBox="0 0 24 24" width="19" height="19"><path fill="#fff" d="M23.5 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.45a5.5 5.5 0 0 1-2.39 3.62v3h3.87c2.26-2.09 3.57-5.16 3.57-8.81z"/><path fill="#fff" opacity=".85" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.87-3c-1.07.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.29v3.1A12 12 0 0 0 12 24z"/></svg>
+        Continue with Google
+      </button>
+
+      <div class="divider">or continue with email</div>
+
+      <button class="link-btn">Continue with email</button>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: email entered → password -->
+  <div class="phone">
+    <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+    <div class="auth">
+      <div class="back-row">
+        <div class="back-circle">←</div>
+        <div class="step-title">Sign in with email</div>
+      </div>
+
+      <div class="field-label">Email</div>
+      <input class="input" value="priya@gmail.com">
+
+      <div class="field-label">Password</div>
+      <input class="input" type="password" value="••••••••••">
+
+      <button class="btn-primary">Sign in</button>
+      <button class="text-link">Email me a sign-in code instead</button>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: new user → create password + verification -->
+  <div class="phone">
+    <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+    <div class="auth">
+      <div class="back-row">
+        <div class="back-circle">←</div>
+        <div class="step-title">Create your account</div>
+      </div>
+
+      <div class="field-label">Email</div>
+      <input class="input" value="kabir@newmail.com">
+
+      <div class="field-label">Create a password <span style="font-weight:500;color:var(--ink-3)">(min 8 characters)</span></div>
+      <input class="input" type="password" placeholder="••••••••">
+
+      <button class="btn-primary">Create account</button>
+
+      <div class="error">
+        We sent a 6-digit code to kabir@newmail.com to verify it's you.
+        Enter it next, or tap the code email if it hasn't arrived.
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 4: verification code -->
+  <div class="phone">
+    <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+    <div class="auth">
+      <div class="back-row">
+        <div class="back-circle">←</div>
+        <div class="step-title">Enter the code</div>
+      </div>
+      <p class="otp-hint">We emailed a 6-digit code to <b>kabir@newmail.com</b>. It expires in 5 minutes.</p>
+
+      <div class="code-boxes">
+        <div class="code-box filled">4</div>
+        <div class="code-box filled">8</div>
+        <div class="code-box filled">2</div>
+        <div class="code-box active"></div>
+        <div class="code-box"></div>
+        <div class="code-box"></div>
+      </div>
+
+      <button class="btn-primary">Verify &amp; finish</button>
+      <button class="text-link">Resend code · 0:24</button>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
