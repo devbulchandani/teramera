@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -50,9 +51,51 @@ fun GroupDetailScreen(
     onShareGroup: (String, String) -> Unit = { _, _ -> },
     viewModel: GroupDetailViewModel = hiltViewModel(),
 ) {
-    val detail by viewModel.detail.collectAsStateWithLifecycle()
+    val uiState by viewModel.detail.collectAsStateWithLifecycle()
     val addMemberState by viewModel.addMemberState.collectAsStateWithLifecycle()
-    val d = detail ?: return
+
+    // loading / error / empty states instead of a blank screen
+    if (uiState.loading) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            androidx.compose.material3.CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(12.dp))
+            Text("Loading group…", style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+    if (uiState.error != null && uiState.detail == null) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("Something went wrong", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                uiState.error ?: "",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = viewModel::refresh,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+                modifier = Modifier.height(52.dp),
+            ) { Text("Try again", style = MaterialTheme.typography.labelLarge) }
+        }
+        return
+    }
+    val d = uiState.detail ?: return
 
     if (addMemberState.visible) {
         AddMemberDialog(

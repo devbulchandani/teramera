@@ -3,12 +3,11 @@ package com.example.teramera.ui.groups
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.teramera.core.network.FoundUserDto
-import com.example.teramera.core.network.GroupDetailDto
-import com.example.teramera.core.network.LedgerApi
 import com.example.teramera.data.repository.GroupDetail
 import com.example.teramera.data.repository.GroupDetailRepository
 import com.example.teramera.data.sync.SyncRepository
+import com.example.teramera.core.network.GroupDetailDto
+import com.example.teramera.core.network.LedgerApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -18,10 +17,16 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class GroupDetailUiState(
+    val loading: Boolean = true,
+    val error: String? = null,
+    val detail: GroupDetail? = null,
+)
+
 data class AddMemberState(
     val visible: Boolean = false,
     val searching: Boolean = false,
-    val found: FoundUserDto? = null,
+    val found: com.example.teramera.core.network.FoundUserDto? = null,
     val error: String? = null,
 )
 
@@ -35,11 +40,23 @@ class GroupDetailViewModel @Inject constructor(
 
     private val groupId: String = checkNotNull(savedStateHandle["groupId"])
     private val remote = MutableStateFlow<GroupDetail?>(null)
+    private val remoteError = MutableStateFlow<String?>(null)
+    private val loadingRemote = MutableStateFlow(true)
     private val addMember = MutableStateFlow(AddMemberState())
 
-    val detail: StateFlow<GroupDetail?> =
-        combine(remote, repository.groupDetail(groupId)) { r, local -> r ?: local }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val detail: StateFlow<GroupDetailUiState> =
+        combine(remote, repository.groupDetail(groupId), remoteError, loadingRemote) { r, local, error, loading ->
+            when {
+                r != null -> GroupDetailUiState(loading = false, detail = r)
+                // local cache has this group (offline-created) — show it, refresh quietly
+                local != null -> GroupDetailUiState(loading = false, detail = local)
+                loading -> GroupDetailUiState(loading = true)
+                else -> GroupDetailUiState(
+                    loading = false,
+                    error = error ?: "Couldn't load this group. Check your connection and try again.",
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GroupDetailUiState(loading = true))
 
     val addMemberState: StateFlow<AddMemberState> = addMember
 
@@ -49,7 +66,13 @@ class GroupDetailViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch {
-            if (!syncRepository.isLoggedIn()) return@launch
+            loadingRemote.value = true
+            remoteError.value = null
+            if (!syncRepository.isLoggedIn()) {
+                // not signed in — local Room data (if any) is the only source
+                loadingRemote.value = false
+                return@launch
+            }
             try {
                 val d = ledgerApi.groupDetail(groupId)
                 remote.value = GroupDetail(
@@ -80,8 +103,17 @@ class GroupDetailViewModel @Inject constructor(
                     },
                     worstCasePayments = 0,
                 )
-            } catch (_: Exception) {
-                // offline or not on server yet — the local fallback flow covers it
+            } catch (e: retrofit2.HttpException) {
+                remoteError.value = when (e.code()) {
+                    403 -> "You're not a member of this group."
+                    404 -> "This group no longer exists."
+                    else -> "Server error (${e.code()})"
+                }
+            } catch (e: Exception) {
+                remoteError.value = e.message?.takeIf { it.isNotBlank() }
+                    ?: "Couldn't reach the server."
+            } finally {
+                loadingRemote.value = false
             }
         }
     }
@@ -95,8 +127,6 @@ class GroupDetailViewModel @Inject constructor(
     fun dismissAddMember() {
         addMember.value = AddMemberState()
     }
-
-    private var lastQuery: String? = null
 
     fun findFriend(query: String) {
         viewModelScope.launch {
@@ -152,6 +182,8 @@ class GroupDetailViewModel @Inject constructor(
             }
         }
     }
+
+    private var lastQuery: String? = null
 
     private fun memberName(detail: GroupDetailDto, userId: String): String =
         detail.members.firstOrNull { it.id == userId }?.name ?: "?"
