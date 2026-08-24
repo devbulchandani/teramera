@@ -835,7 +835,7 @@ app.post("/expenses", async (c) => {
         }
         createdIds.push(id);
     }
-    return c.json({ id: createdIds[0], count: createdIds.length, amountMinor: body.amountMinor });
+    return c.json({ id: createdIds[0], amountMinor: body.amountMinor, shareCount: participantIds.length });
 });
 
 // ---------- settlements ----------

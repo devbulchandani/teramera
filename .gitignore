@@ -23,3 +23,6 @@ opendesign/index.html
 
 # misc
 *.log
+
+# personal scratch scripts
+scratch/
