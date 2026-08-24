@@ -112,8 +112,15 @@ private fun EntryStep(state: LoginUiState, viewModel: LoginViewModel, onLoggedIn
                         context,
                         GetCredentialRequest.Builder().addCredentialOption(option).build(),
                     )
-                    val idToken = (result.credential as? GoogleIdTokenCredential)?.idToken
-                        ?: throw IllegalStateException("Unexpected credential type")
+                    // CredentialManager usually wraps the token in a CustomCredential —
+                    // unwrap via createFrom() instead of a direct cast.
+                    val credential = result.credential
+                    val idToken = when {
+                        credential is GoogleIdTokenCredential -> credential.idToken
+                        credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ->
+                            GoogleIdTokenCredential.createFrom(credential.data).idToken
+                        else -> throw IllegalStateException("Unexpected credential type: ${credential.type}")
+                    }
                     viewModel.googleLogin(idToken, onLoggedIn)
                 } catch (_: GetCredentialCancellationException) {
                     // account picker dismissed — nothing to do
