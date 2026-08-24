@@ -10,6 +10,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class LoginUiState(
+    val loading: Boolean = false,
+    val error: String? = null,
+)
+
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
@@ -17,47 +22,6 @@ class LoginViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state
-
-    fun onPhoneChange(value: String) = _state.update { it.copy(phone = value, error = null) }
-
-    fun onCodeChange(value: String) = _state.update {
-        it.copy(code = value.filter(Char::isDigit).take(6), error = null)
-    }
-
-    fun requestOtp() {
-        val phone = normalize(_state.value.phone)
-        if (phone == null) {
-            _state.update { it.copy(error = "Use international format, e.g. +919876543210") }
-            return
-        }
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, phone = phone) }
-            authRepository.requestOtp(phone).fold(
-                onSuccess = { challenge ->
-                    _state.update {
-                        it.copy(step = LoginStep.Verify, requestId = challenge.requestId, devCode = challenge.devCode, loading = false)
-                    }
-                },
-                onFailure = { failure ->
-                    _state.update { it.copy(loading = false, error = friendly(failure)) }
-                },
-            )
-        }
-    }
-
-    fun verifyOtp(onLoggedIn: () -> Unit) {
-        val state = _state.value
-        val requestId = state.requestId ?: return
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true) }
-            authRepository.verifyOtp(requestId, state.code).fold(
-                onSuccess = { onLoggedIn() },
-                onFailure = { failure ->
-                    _state.update { it.copy(loading = false, error = friendly(failure)) }
-                },
-            )
-        }
-    }
 
     fun googleLogin(idToken: String, onLoggedIn: () -> Unit) {
         viewModelScope.launch {
@@ -74,14 +38,21 @@ class LoginViewModel @Inject constructor(
     fun googleError(message: String) =
         _state.update { it.copy(loading = false, error = message) }
 
-    private fun normalize(raw: String): String? {
-        var cleaned = raw.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-        if (!cleaned.startsWith("+")) return null
-        cleaned = "+" + cleaned.drop(1).filter(Char::isDigit)
-        return if (cleaned.matches(Regex("\\+\\d{8,15}"))) cleaned else null
+    /**
+     * Maps raw failures to something a human can act on.
+     * - backend messages (audience mismatch etc.) pass through
+     * - Credential-Manager codes become setup hints
+     */
+    private fun friendly(failure: Throwable): String {
+        val raw = failure.message ?: ""
+        return when {
+            raw.contains("No teramera", true) -> raw
+            raw.contains("Invalid Google ID token", true) ->
+                "That Google account was rejected by the server. " +
+                    "If you're the app owner, make sure the account is an allowed test user " +
+                    "or the OAuth consent screen is published."
+            raw.contains("HTTP 5", true) -> "Server hiccup — try again."
+            else -> raw.ifBlank { "Sign-in failed — try again." }
+        }
     }
-
-    private fun friendly(failure: Throwable): String =
-        failure.message?.takeIf { it.isNotBlank() && !it.contains("HTTP", ignoreCase = true) }
-            ?: "Couldn't reach the server. Check the backend is running."
 }
