@@ -925,8 +925,3 @@ function jsonError(c: any, status: any, message: string) {
 
 export default app;
 
-
-    } catch (e: any) {
-        return c.json({ ok: false, error: String(e?.message ?? e).slice(0, 200) });
-    }
-});
