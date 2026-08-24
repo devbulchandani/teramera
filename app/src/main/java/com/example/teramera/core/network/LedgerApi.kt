@@ -119,4 +119,9 @@ interface LedgerApi {
 
     @GET("groups/{groupId}/detail")
     suspend fun groupDetail(@Path("groupId") groupId: String): GroupDetailDto
+
+    @GET("app/version")
+    suspend fun appVersion(): AppVersionDto
 }
+
+data class AppVersionDto(val versionCode: Int, val versionName: String, val apkUrl: String)

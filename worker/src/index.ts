@@ -24,6 +24,8 @@ interface Env {
     SMTP_PORT?: string;
     SMTP_USER?: string;
     SMTP_PASS?: string;
+    APP_VERSION_CODE?: string;
+    APP_VERSION_NAME?: string;
 }
 
 type AppEnv = { Bindings: Env; Variables: { userId: string } };
@@ -56,7 +58,7 @@ type Row = Record<string, any>;
 app.use("*", cors());
 
 app.use(async (c, next) => {
-    if (c.req.path.startsWith("/auth/") || c.req.path === "/" || c.req.path.startsWith("/invite/")) return next();
+    if (c.req.path.startsWith("/auth/") || c.req.path === "/" || c.req.path.startsWith("/invite/") || c.req.path === "/app/version") return next();
     const header = c.req.header("Authorization");
     if (!header?.startsWith("Bearer ")) {
         return c.json({ message: "unauthorized" }, 401);
@@ -68,6 +70,16 @@ app.use(async (c, next) => {
 });
 
 app.get("/", (c) => c.json({ name: "teramera-api", status: "ok" }));
+
+/** Current APK version — the app polls this on launch to offer in-app updates. */
+app.get("/app/version", (c) => {
+    const origin = c.env.APP_BASE_URL || `https://${c.req.header("host")}`;
+    return c.json({
+        versionCode: Number(c.env.APP_VERSION_CODE || 1),
+        versionName: c.env.APP_VERSION_NAME || "1.0",
+        apkUrl: `${origin}/teramera.apk`,
+    });
+});
 
 // ---------- helpers ----------
 

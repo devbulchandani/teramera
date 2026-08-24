@@ -14,7 +14,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -31,6 +33,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.teramera.BuildConfig
 import com.example.teramera.core.auth.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import jakarta.inject.Inject
@@ -82,13 +85,20 @@ fun AppRoot() {
 class SessionViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val syncRepository: com.example.teramera.data.sync.SyncRepository,
+    private val updateManager: com.example.teramera.core.update.AppUpdateManager,
 ) : ViewModel() {
+
+    private val _availableUpdate = MutableStateFlow<com.example.teramera.core.update.UpdateInfo?>(null)
+    val availableUpdate: StateFlow<com.example.teramera.core.update.UpdateInfo?> = _availableUpdate
     val isLoggedIn: StateFlow<Boolean?> = authRepository.isLoggedIn.stateIn(
         viewModelScope, SharingStarted.Eagerly, null,
     )
 
     fun refresh() {
-        viewModelScope.launch { syncRepository.refreshNow() }
+        viewModelScope.launch {
+            syncRepository.refreshNow()
+            _availableUpdate.value = updateManager.checkForUpdate(BuildConfig.VERSION_CODE)
+        }
     }
 
     fun logout(onDone: () -> Unit) {
@@ -97,6 +107,12 @@ class SessionViewModel @Inject constructor(
             onDone()
         }
     }
+
+    fun dismissUpdate() {
+        _availableUpdate.value = null
+    }
+
+    fun startUpdate(apkUrl: String) = updateManager.downloadAndInstall(apkUrl)
 
     fun joinGroup(groupId: String, onJoined: (String) -> Unit) {
         viewModelScope.launch {
@@ -109,8 +125,29 @@ class SessionViewModel @Inject constructor(
 
 @Composable
 private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
-    // refresh server state on every entry into the app
+    // refresh server state on every entry into the app + check for updates
+    val availableUpdate by sessionViewModel.availableUpdate.collectAsState()
     androidx.compose.runtime.LaunchedEffect(Unit) { sessionViewModel.refresh() }
+
+    availableUpdate?.let { update ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { sessionViewModel.dismissUpdate() },
+            shape = MaterialTheme.shapes.large,
+            title = { Text("Update teramera") },
+            text = { Text("Version ${update.versionName} is available. Update for the latest fixes and features.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    sessionViewModel.dismissUpdate()
+                    sessionViewModel.startUpdate(update.apkUrl)
+                }) { Text("Update", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { sessionViewModel.dismissUpdate() }) {
+                    Text("Later")
+                }
+            },
+        )
+    }
 
     val navController = rememberNavController()
 
