@@ -1266,16 +1266,25 @@ async function pushToUsers(c: any, userIds: string[], title: string, bodyText: s
                 uid, Date.now() - 90 * 24 * 60 * 60 * 1000,
             );
             for (const d of devices) {
-                await fetch(`https://fcm.googleapis.com/v1/projects/${c.env.FCM_PROJECT_ID}/messages:send`, {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        message: {
-                            token: d.token,
-                            notification: { title, body: bodyText },
-                        },
-                    }),
-                }).catch(() => null);
+                try {
+                    const res = await fetch(`https://fcm.googleapis.com/v1/projects/${c.env.FCM_PROJECT_ID}/messages:send`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            message: {
+                                token: d.token,
+                                notification: { title, body: bodyText },
+                            },
+                        }),
+                    });
+                    if (!res.ok) {
+                        console.error(`fcm send ${res.status} for token ${d.token.slice(0, 12)}…: ${await res.text()}`);
+                    } else {
+                        console.log(`push sent to token ${d.token.slice(0, 12)}…`);
+                    }
+                } catch (e) {
+                    console.error("fcm fetch threw", e);
+                }
             }
         }
     } catch (e) {

@@ -23,6 +23,10 @@ class SyncRepository @Inject constructor(
         data class Failure(val message: String) : Result
     }
 
+    /** Bumped on every successful sync — lets screens re-fetch fresh server state. */
+    private val _dataVersion = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val dataVersion: kotlinx.coroutines.flow.StateFlow<Long> = _dataVersion
+
     suspend fun isLoggedIn(): Boolean = tokenStore.current() != null
 
     suspend fun selfUserId(): String? = tokenStore.current()?.userId
@@ -95,6 +99,7 @@ class SyncRepository @Inject constructor(
         dao.clearSyncedActivity()
         dao.insertSyncedActivity(activity)
 
+        _dataVersion.value += 1
         Result.Success
     } catch (e: Exception) {
         Result.Failure(e.message ?: "Sync failed")

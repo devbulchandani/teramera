@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -62,6 +63,10 @@ class GroupDetailViewModel @Inject constructor(
 
     init {
         refresh()
+        // re-fetch whenever any sync completes (expense added, settle, etc.)
+        viewModelScope.launch {
+            syncRepository.dataVersion.drop(1).collect { refresh() }
+        }
     }
 
     fun refresh() {
