@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "990650583108",
+    "project_id": "teramera-dfbd2",
+    "storage_bucket": "teramera-dfbd2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:990650583108:android:1021e1520f7d1e665f5411",
+        "android_client_info": {
+          "package_name": "com.example.teramera"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0Y1056-pxje8dZGWVDv4f33hLAFeKKsE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

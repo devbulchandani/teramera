@@ -7,6 +7,18 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+// FCM without the google-services plugin (it doesn't support AGP 9 yet):
+// read the Firebase config straight into BuildConfig fields.
+val firebaseConfig: Map<*, *>? = project.file("google-services.json").takeIf { it.exists() }?.let {
+    groovy.json.JsonSlurper().parseText(it.readText()) as Map<*, *>
+}
+val firebaseProjectInfo = firebaseConfig?.get("project_info") as? Map<*, *>
+val firebaseClient = (firebaseConfig?.get("client") as? List<*>)?.firstOrNull() as? Map<*, *>
+val firebaseProjectId = firebaseProjectInfo?.get("project_id")?.toString() ?: ""
+val firebaseSenderId = firebaseProjectInfo?.get("project_number")?.toString() ?: ""
+val firebaseAppId = firebaseClient?.get("mobilesdk_app_id")?.toString() ?: ""
+val firebaseApiKey = firebaseClient?.get("api_key")?.toString() ?: ""
+
 android {
     namespace = "com.example.teramera"
     compileSdk {
@@ -28,6 +40,11 @@ android {
             if (f.exists()) f.inputStream().use { load(it) }
         }
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${props.getProperty("google.webClientId", "")}\"")
+
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"$firebaseProjectId\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID", "\"$firebaseSenderId\"")
+        buildConfigField("String", "FIREBASE_APP_ID", "\"$firebaseAppId\"")
+        buildConfigField("String", "FIREBASE_API_KEY", "\"$firebaseApiKey\"")
     }
 
     buildTypes {
