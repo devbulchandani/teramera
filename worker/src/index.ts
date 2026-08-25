@@ -640,34 +640,83 @@ app.get("/groups", async (c) => {
          WHERE m.user_id = ? ORDER BY g.created_at DESC`,
         userId,
     );
-    const result = [];
-    for (const group of list) {
-        const spent = await rows<{ s: number }>(c, "SELECT COALESCE(SUM(amount_minor), 0) AS s FROM expenses WHERE group_id = ?", group.id);
-        const balances = await groupBalances(c, group.id);
-        const netForMe = balances.find((b) => b.userId === userId)?.netMinor ?? 0;
-        result.push({
-            id: group.id,
-            name: group.name,
-            currency: group.currency,
-            totalSpentMinor: spent[0].s,
-            netForMeMinor: netForMe,
-        });
+    if (list.length === 0) return c.json([]);
+
+    // batched: one query each for expenses, shares and settlements across all my groups
+    const groupIds = list.map((g) => g.id);
+    const expenses = await rows<Row>(
+        c,
+        `SELECT group_id, id, paid_by_user_id, amount_minor FROM expenses
+         WHERE group_id IN (${groupIds.map(() => "?").join(",")})`,
+        ...groupIds,
+    );
+    const shares = expenses.length > 0
+        ? await rows<Row>(
+              c,
+              `SELECT s.expense_id, s.user_id, s.share_amount_minor, e.group_id FROM expense_shares s
+               JOIN expenses e ON e.id = s.expense_id
+               WHERE e.group_id IN (${groupIds.map(() => "?").join(",")})`,
+              ...groupIds,
+          )
+        : [];
+    const settlements = await rows<Row>(
+        c,
+        `SELECT group_id, payer_user_id, paid_to_user_id, amount_minor FROM settlements
+         WHERE group_id IN (${groupIds.map(() => "?").join(",")})`,
+        ...groupIds,
+    );
+
+    const spentByGroup = new Map<string, number>();
+    const netByGroup = new Map<string, Map<string, number>>();
+    const expenseById = new Map(expenses.map((e) => [e.id, e]));
+    for (const e of expenses) {
+        spentByGroup.set(e.group_id, (spentByGroup.get(e.group_id) ?? 0) + e.amount_minor);
+        const net = netByGroup.get(e.group_id) ?? new Map<string, number>();
+        net.set(e.paid_by_user_id, (net.get(e.paid_by_user_id) ?? 0) + e.amount_minor);
+        netByGroup.set(e.group_id, net);
     }
-    return c.json(result);
+    for (const s of shares) {
+        const e = expenseById.get(s.expense_id);
+        if (!e) continue;
+        const net = netByGroup.get(e.group_id);
+        net?.set(s.user_id, (net.get(s.user_id) ?? 0) - s.share_amount_minor);
+    }
+    for (const s of settlements) {
+        const net = netByGroup.get(s.group_id);
+        if (!net) continue;
+        net.set(s.payer_user_id, (net.get(s.payer_user_id) ?? 0) + s.amount_minor);
+        net.set(s.paid_to_user_id, (net.get(s.paid_to_user_id) ?? 0) - s.amount_minor);
+    }
+
+    return c.json(list.map((group) => ({
+        id: group.id,
+        name: group.name,
+        currency: group.currency,
+        totalSpentMinor: spentByGroup.get(group.id) ?? 0,
+        netForMeMinor: netByGroup.get(group.id)?.get(userId) ?? 0,
+    })));
 });
 
 /** Per-member overpaid-net inside one group (positive = is owed). */
 async function groupBalances(c: any, groupId: string): Promise<{ userId: string; netMinor: number }[]> {
     const net = new Map<string, number>();
-    const expenses = await rows<Row>(c, "SELECT * FROM expenses WHERE group_id = ?", groupId);
-    for (const expense of expenses) {
-        net.set(expense.paid_by_user_id, (net.get(expense.paid_by_user_id) ?? 0) + expense.amount_minor);
-        const shares = await rows<Row>(c, "SELECT * FROM expense_shares WHERE expense_id = ?", expense.id);
+    const expenses = await rows<Row>(c, "SELECT id, paid_by_user_id, amount_minor FROM expenses WHERE group_id = ?", groupId);
+    if (expenses.length > 0) {
+        const shares = await rows<Row>(
+            c,
+            `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
+             WHERE expense_id IN (${expenses.map(() => "?").join(",")})`,
+            ...expenses.map((e) => e.id),
+        );
+        const paidBy = new Map(expenses.map((e) => [e.id, e]));
         for (const share of shares) {
+            const expense = paidBy.get(share.expense_id);
+            if (!expense) continue;
+            net.set(expense.paid_by_user_id, (net.get(expense.paid_by_user_id) ?? 0) + expense.amount_minor);
             net.set(share.user_id, (net.get(share.user_id) ?? 0) - share.share_amount_minor);
         }
     }
-    const settlements = await rows<Row>(c, "SELECT * FROM settlements WHERE group_id = ?", groupId);
+    const settlements = await rows<Row>(c, "SELECT payer_user_id, paid_to_user_id, amount_minor FROM settlements WHERE group_id = ?", groupId);
     for (const s of settlements) {
         net.set(s.payer_user_id, (net.get(s.payer_user_id) ?? 0) + s.amount_minor);
         net.set(s.paid_to_user_id, (net.get(s.paid_to_user_id) ?? 0) - s.amount_minor);
@@ -683,53 +732,70 @@ app.get("/groups/:groupId/detail", async (c) => {
     const [group] = await rows<GroupRow>(c, "SELECT * FROM groups WHERE id = ?", groupId);
     if (!group) return jsonError(c, 404, "Group not found");
 
-    const memberIds = (await rows<{ user_id: string }>(c, "SELECT user_id FROM memberships WHERE group_id = ?", groupId))
-        .map((r) => r.user_id);
-    const members = [];
-    for (const memberId of memberIds) {
-        const [u] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", memberId);
-        members.push({ id: memberId, name: u?.name ?? "?", isSelf: memberId === userId, upiId: u?.upi_id ?? "" });
-    }
+    // batched: members+users in one join, all shares in one IN query
+    const memberRows = await rows<Row>(
+        c,
+        `SELECT u.id, u.name, u.upi_id FROM memberships m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.group_id = ?`,
+        groupId,
+    );
+    const members = memberRows.map((u) => ({
+        id: u.id,
+        name: u.name ?? "?",
+        isSelf: u.id === userId,
+        upiId: u.upi_id ?? "",
+    }));
+    const nameById = new Map(memberRows.map((u) => [u.id, u.name ?? "?"]));
 
     const expenses = await rows<Row>(
         c,
         "SELECT * FROM expenses WHERE group_id = ? ORDER BY created_at DESC",
         groupId,
     );
-    const expenseList = [];
-    for (const expense of expenses) {
-        const shares = await rows<Row>(c, "SELECT * FROM expense_shares WHERE expense_id = ?", expense.id);
-        expenseList.push({
+    const shares = expenses.length > 0
+        ? await rows<Row>(
+              c,
+              `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
+               WHERE expense_id IN (${expenses.map(() => "?").join(",")})`,
+              ...expenses.map((e) => e.id),
+          )
+        : [];
+    const sharesByExpense = new Map<string, Row[]>();
+    for (const s of shares) {
+        const list = sharesByExpense.get(s.expense_id) ?? [];
+        list.push(s);
+        sharesByExpense.set(s.expense_id, list);
+    }
+
+    const expenseList = expenses.map((expense) => {
+        const expenseShares = sharesByExpense.get(expense.id) ?? [];
+        return {
             id: expense.id,
             title: expense.title,
             paidByUserId: expense.paid_by_user_id,
             amountMinor: expense.amount_minor,
-            myShareMinor: shares.find((s) => s.user_id === userId)?.share_amount_minor ?? 0,
-            participantCount: shares.length,
+            myShareMinor: expenseShares.find((s) => s.user_id === userId)?.share_amount_minor ?? 0,
+            participantCount: expenseShares.length,
             createdAt: expense.created_at,
-        });
-    }
+        };
+    });
 
     const balances = await groupBalances(c, groupId);
     const simplified = simplifyDebts(new Map(balances.map((b) => [b.userId, b.netMinor])));
-    const nameOf = async (uid: string) => {
-        const [u] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", uid);
-        return u?.name ?? "?";
-    };
-    const namedDebts = [];
-    for (const t of simplified.transfers) {
-        namedDebts.push({
-            fromUserId: t.fromUserId,
-            fromName: await nameOf(t.fromUserId),
-            toUserId: t.toUserId,
-            toName: await nameOf(t.toUserId),
-            amountMinor: t.amountMinor,
-        });
-    }
-    const namedBalances = [];
-    for (const b of balances) {
-        namedBalances.push({ userId: b.userId, name: await nameOf(b.userId), netMinor: b.netMinor });
-    }
+    const namedDebts = simplified.transfers.map((t) => ({
+        fromUserId: t.fromUserId,
+        fromName: nameById.get(t.fromUserId) ?? "?",
+        toUserId: t.toUserId,
+        toName: nameById.get(t.toUserId) ?? "?",
+        amountMinor: t.amountMinor,
+    }));
+    const namedBalances = balances.map((b) => ({
+        userId: b.userId,
+        name: nameById.get(b.userId) ?? "?",
+        netMinor: b.netMinor,
+        upiId: memberRows.find((u) => u.id === b.userId)?.upi_id ?? "",
+    }));
 
     return c.json({
         id: group.id,
@@ -1094,12 +1160,22 @@ app.get("/balances", async (c) => {
         }
     }
 
-    const result = [];
-    for (const [uid, value] of net.entries()) {
-        const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", uid);
-        result.push({ userId: uid, name: user?.name ?? "?", netMinor: value, upiId: user?.upi_id ?? "" });
-    }
-    return c.json(result);
+    // batched user lookup
+    const uids = [...net.keys()];
+    const userRows = uids.length > 0
+        ? await rows<UserRow>(
+              c,
+              `SELECT id, name, upi_id FROM users WHERE id IN (${uids.map(() => "?").join(",")})`,
+              ...uids,
+          )
+        : [];
+    const userById = new Map(userRows.map((u) => [u.id, u]));
+    return c.json(uids.map((uid) => ({
+        userId: uid,
+        name: userById.get(uid)?.name ?? "?",
+        netMinor: net.get(uid)!,
+        upiId: userById.get(uid)?.upi_id ?? "",
+    })));
 });
 
 // ---------- activity feed ----------

@@ -8,6 +8,7 @@ import com.example.teramera.data.local.SyncedActivityEntity
 import com.example.teramera.data.local.SyncedBalanceEntity
 import com.example.teramera.data.local.SyncedGroupEntity
 import com.example.teramera.data.local.TerameraDao
+import kotlinx.coroutines.async
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,56 +49,66 @@ class SyncRepository @Inject constructor(
     suspend fun refreshNow(): Result = try {
         val now = System.currentTimeMillis()
 
-        // cache the signed-in profile (name/UPI) for greetings & settling
-        try {
-            val me = ledgerApi.me()
-            dao.insertUser(
-                com.example.teramera.data.local.UserEntity(
-                    id = me.id, name = me.name ?: "You", isSelf = true,
-                    email = me.email, upiId = me.upiId?.ifEmpty { null },
+        // all four endpoints in parallel — sequential fetches were the main lag
+        kotlinx.coroutines.coroutineScope {
+            val meDeferred = async { runCatching { ledgerApi.me() }.getOrNull() }
+            val balancesDeferred = async { runCatching { ledgerApi.friendBalances() }.getOrNull() }
+            val groupsDeferred = async { runCatching { ledgerApi.myGroups() }.getOrNull() }
+            val activityDeferred = async { runCatching { ledgerApi.activity() }.getOrNull() }
+
+            meDeferred.await()?.let { me ->
+                dao.insertUser(
+                    com.example.teramera.data.local.UserEntity(
+                        id = me.id, name = me.name ?: "You", isSelf = true,
+                        email = me.email, upiId = me.upiId?.ifEmpty { null },
+                    )
                 )
-            )
-        } catch (_: Exception) {
-            // profile refresh is best-effort
-        }
+            }
 
-        val balances = ledgerApi.friendBalances().map { dto ->
-            SyncedBalanceEntity(userId = dto.userId, name = dto.name, netMinor = dto.netMinor, upiId = dto.upiId.orEmpty(), updatedAt = now)
-        }
-        dao.clearSyncedBalances()
-        dao.insertSyncedBalances(balances)
+            balancesDeferred.await()?.let { balances ->
+                dao.clearSyncedBalances()
+                dao.insertSyncedBalances(balances.map { dto ->
+                    SyncedBalanceEntity(
+                        userId = dto.userId, name = dto.name, netMinor = dto.netMinor,
+                        upiId = dto.upiId.orEmpty(), updatedAt = now,
+                    )
+                })
+            }
 
-        val groups = ledgerApi.myGroups().map { dto ->
-            SyncedGroupEntity(
-                id = dto.id,
-                name = dto.name,
-                currency = dto.currency,
-                totalSpentMinor = dto.totalSpentMinor,
-                netForMeMinor = dto.netForMeMinor,
-                updatedAt = now,
-            )
-        }
-        dao.insertSyncedGroups(groups)
+            groupsDeferred.await()?.let { groups ->
+                dao.insertSyncedGroups(groups.map { dto ->
+                    SyncedGroupEntity(
+                        id = dto.id,
+                        name = dto.name,
+                        currency = dto.currency,
+                        totalSpentMinor = dto.totalSpentMinor,
+                        netForMeMinor = dto.netForMeMinor,
+                        updatedAt = now,
+                    )
+                })
+            }
 
-        val activity = ledgerApi.activity().map { e ->
-            SyncedActivityEntity(
-                id = e.id,
-                type = e.type,
-                title = e.title,
-                counterpartyName = e.payerName,
-                secondaryName = e.payeeName,
-                paidBySelf = e.paidBySelf,
-                involvedSelf = e.involvedSelf,
-                amountMinor = e.amountMinor,
-                myShareMinor = e.myShareMinor,
-                groupName = e.groupName,
-                participantCount = e.participantCount,
-                methodLabel = e.methodLabel,
-                createdAt = e.createdAt,
-            )
+            activityDeferred.await()?.let { activity ->
+                dao.clearSyncedActivity()
+                dao.insertSyncedActivity(activity.map { e ->
+                    SyncedActivityEntity(
+                        id = e.id,
+                        type = e.type,
+                        title = e.title,
+                        counterpartyName = e.payerName,
+                        secondaryName = e.payeeName,
+                        paidBySelf = e.paidBySelf,
+                        involvedSelf = e.involvedSelf,
+                        amountMinor = e.amountMinor,
+                        myShareMinor = e.myShareMinor,
+                        groupName = e.groupName,
+                        participantCount = e.participantCount,
+                        methodLabel = e.methodLabel,
+                        createdAt = e.createdAt,
+                    )
+                })
+            }
         }
-        dao.clearSyncedActivity()
-        dao.insertSyncedActivity(activity)
 
         _dataVersion.value += 1
         Result.Success

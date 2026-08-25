@@ -328,7 +328,7 @@ private fun BalanceRow(entry: BalanceEntry, onClick: () -> Unit = {}) {
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = "₹${formatInr(kotlin.math.abs(entry.amountMinor) / 100)}",
+                text = "₹${formatInr(kotlin.math.abs(entry.amountMinor))}",
                 style = MaterialTheme.typography.titleMedium,
                 color = if (positive) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
             )

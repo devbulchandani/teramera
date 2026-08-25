@@ -27,6 +27,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +48,79 @@ fun SettleScreen(
     viewModel: SettleViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // UPI-first settle: open the UPI app, confirm the payment, only then record it
+    var launchedDraft by remember { mutableStateOf<SettleDraft?>(null) }
+    var pendingUpiConfirm by remember { mutableStateOf<SettleDraft?>(null) }
+
+    val upiLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val draft = launchedDraft
+        launchedDraft = null
+        if (draft == null) return@rememberLauncherForActivityResult
+        val status = result.data?.getStringExtra("status") ?: result.data?.data?.getQueryParameter("Status")
+        val responseCode = result.data?.getStringExtra("responseCode") ?: result.data?.data?.getQueryParameter("responseCode")
+        val paidInUpiApp = status.equals("SUCCESS", ignoreCase = true) || responseCode == "00" || responseCode == "0"
+        if (paidInUpiApp) {
+            viewModel.save {}
+        } else {
+            // most UPI apps return an empty result even on success — ask
+            pendingUpiConfirm = draft
+        }
+    }
+
+    fun launchUpi(draft: SettleDraft) {
+        val upi = draft.person.upiId ?: return
+        val rupees = java.math.BigDecimal(draft.amountMinor).movePointLeft(2).toPlainString()
+        val uri = android.net.Uri.parse("upi://pay").buildUpon()
+            .appendQueryParameter("pa", upi)
+            .appendQueryParameter("pn", draft.person.name)
+            .appendQueryParameter("am", rupees)
+            .appendQueryParameter("cu", "INR")
+            .appendQueryParameter("tn", "teramera")
+            .build()
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+        launchedDraft = draft
+        try {
+            upiLauncher.launch(intent)
+        } catch (_: Exception) {
+            launchedDraft = null
+            android.widget.Toast.makeText(context, "No UPI app found — recording without payment", android.widget.Toast.LENGTH_LONG).show()
+            viewModel.save {}
+        }
+    }
+
+    pendingUpiConfirm?.let { confirmDraft ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingUpiConfirm = null },
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            title = { Text("Payment done?") },
+            text = {
+                Text("Did you complete ₹${formatInr(confirmDraft.amountMinor)} to ${confirmDraft.person.name} in your UPI app?")
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    pendingUpiConfirm = null
+                    viewModel.save {}
+                }) { Text("Yes, record it", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    pendingUpiConfirm = null
+                    viewModel.clear()
+                }) { Text("No, cancel") }
+            },
+        )
+    }
+
+    fun onSave(draft: SettleDraft) {
+        val upiApplies = draft.method == PaymentMethod.UPI &&
+            !draft.person.upiId.isNullOrBlank() &&
+            draft.person.amountMinor < 0 // I owe them → the intent pays from this phone
+        if (upiApplies) launchUpi(draft) else viewModel.save {}
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -94,7 +170,7 @@ fun SettleScreen(
             onCustomKey = viewModel::onKey,
             onCustomBackspace = viewModel::onBackspace,
             onMethod = viewModel::setMethod,
-            onSave = { viewModel.save {} },
+            onSave = { state.draft?.let { onSave(it) } },
             onDismiss = viewModel::clear,
         )
     }
@@ -316,25 +392,6 @@ private fun PaymentMethod.label() = when (this) {
 
 @Composable
 private fun DoneStage(draft: SettleDraft, onDone: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    fun openUpiApp() {
-        val upi = draft.person.upiId ?: return
-        val rupees = java.math.BigDecimal(draft.amountMinor).movePointLeft(2).toPlainString()
-        val uri = android.net.Uri.parse("upi://pay").buildUpon()
-            .appendQueryParameter("pa", upi)
-            .appendQueryParameter("pn", draft.person.name)
-            .appendQueryParameter("am", rupees)
-            .appendQueryParameter("cu", "INR")
-            .appendQueryParameter("tn", "teramera")
-            .build()
-        try {
-            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri))
-        } catch (_: Exception) {
-            android.widget.Toast.makeText(context, "No UPI app found on this phone", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -362,30 +419,12 @@ private fun DoneStage(draft: SettleDraft, onDone: () -> Unit) {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp),
         )
-        // the UPI intent pays from this phone, so it applies when I owe them
-        if (!draft.person.upiId.isNullOrBlank() && draft.person.amountMinor < 0) {
-            Button(
-                onClick = { openUpiApp() },
-                shape = RoundedCornerShape(16.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 24.dp)
-                    .height(56.dp),
-            ) {
-                Text("Pay ₹${formatInr(draft.amountMinor)} via UPI → ${draft.person.upiId}",
-                    style = MaterialTheme.typography.labelLarge)
-            }
-        }
         Button(
             onClick = onDone,
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 12.dp)
+                .padding(top = 24.dp)
                 .height(56.dp),
         ) {
             Text("Done", style = MaterialTheme.typography.labelLarge)
