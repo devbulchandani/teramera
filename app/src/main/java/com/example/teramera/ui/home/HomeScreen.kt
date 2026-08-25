@@ -51,7 +51,13 @@ fun HomeScreen(
     onLogout: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    HomeContent(state = state, onAddExpense = onAddExpense, onOpenGroup = onOpenGroup, onLogout = onLogout)
+    HomeContent(
+        state = state,
+        onAddExpense = onAddExpense,
+        onOpenGroup = onOpenGroup,
+        onLogout = onLogout,
+        onSaveProfile = viewModel::saveProfile,
+    )
 }
 
 enum class HomeTab(val label: String) { Friends("Friends"), Groups("Groups"), All("All") }
@@ -62,11 +68,27 @@ fun HomeContent(
     onAddExpense: () -> Unit = {},
     onOpenGroup: (String) -> Unit = {},
     onLogout: () -> Unit = {},
+    onSaveProfile: (name: String, upiId: String) -> Unit = { _, _ -> },
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
+    var profileOpen by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar(onLogout = onLogout)
+        TopBar(
+            state = state,
+            onLogout = onLogout,
+            onOpenProfile = { profileOpen = true },
+        )
+        if (profileOpen) {
+            ProfileDialog(
+                state = state,
+                onSave = { name, upi ->
+                    onSaveProfile(name, upi)
+                    profileOpen = false
+                },
+                onDismiss = { profileOpen = false },
+            )
+        }
         HeroCard(
             netMinor = state.netMinor,
             owedToYouMinor = state.owedToYouMinor,
@@ -91,7 +113,7 @@ fun HomeContent(
                 item { SectionLabel("Owes you") }
                 items(owedYou, key = { "${it.id}-pos" }) { entry ->
                     BalanceRow(entry, onClick = {
-                        if (entry.id.startsWith("g_")) onOpenGroup(entry.id)
+                        if (entry.isGroup) onOpenGroup(entry.id)
                     })
                     HorizontalHairline()
                 }
@@ -101,7 +123,7 @@ fun HomeContent(
                 item { SectionLabel("You owe") }
                 items(youOwe, key = { "${it.id}-neg" }) { entry ->
                     BalanceRow(entry, onClick = {
-                        if (entry.id.startsWith("g_")) onOpenGroup(entry.id)
+                        if (entry.isGroup) onOpenGroup(entry.id)
                     })
                     HorizontalHairline()
                 }
@@ -118,7 +140,11 @@ private fun friendSubtitle(entry: BalanceEntry): String =
     }
 
 @Composable
-internal fun TopBar(onLogout: () -> Unit = {}) {
+internal fun TopBar(
+    state: HomeUiState = HomeUiState(),
+    onLogout: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
+) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -129,23 +155,30 @@ internal fun TopBar(onLogout: () -> Unit = {}) {
     ) {
         Column {
             Text(
-                text = "Good morning",
+                text = greetingFor(java.util.Calendar.getInstance()),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "Dev",
+                text = state.selfName.ifEmpty { "You" },
                 style = MaterialTheme.typography.titleLarge,
             )
         }
         Box {
             Box(modifier = Modifier.clickable { menuOpen = true }) {
-                Avatar(initials = "D", isViolet = false, size = 44.dp)
+                Avatar(initials = initialsOfName(state.selfName.ifEmpty { "You" }), isViolet = false, size = 44.dp)
             }
             androidx.compose.material3.DropdownMenu(
                 expanded = menuOpen,
                 onDismissRequest = { menuOpen = false },
             ) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Profile & UPI") },
+                    onClick = {
+                        menuOpen = false
+                        onOpenProfile()
+                    },
+                )
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text("Log out", color = MaterialTheme.colorScheme.error) },
                     leadingIcon = {
@@ -160,6 +193,16 @@ internal fun TopBar(onLogout: () -> Unit = {}) {
         }
     }
 }
+
+private fun greetingFor(calendar: java.util.Calendar): String = when (calendar.get(java.util.Calendar.HOUR_OF_DAY)) {
+    in 5..11 -> "Good morning"
+    in 12..16 -> "Good afternoon"
+    in 17..20 -> "Good evening"
+    else -> "Good night"
+}
+
+private fun initialsOfName(name: String): String =
+    name.split(" ").filter { it.isNotBlank() }.take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
 
 @Composable
 private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long) {
@@ -326,6 +369,59 @@ internal fun Avatar(initials: String, isViolet: Boolean, size: androidx.compose.
 // Minor units are paise; UI shows whole rupees.
 internal fun formatInr(minor: Long): String =
     NumberFormat.getIntegerInstance(Locale("en", "IN")).format((minor + 50) / 100)
+
+@Composable
+private fun ProfileDialog(
+    state: HomeUiState,
+    onSave: (name: String, upiId: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(state.selfName) }
+    var upi by remember { mutableStateOf(state.selfUpiId) }
+    val upiValid = upi.isBlank() || Regex("^[\r\n\t\\w.\\-]{2,64}@[a-zA-Z]{2,32}$").matches(upi.trim())
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+        title = { Text("Profile & UPI") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Your name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = upi,
+                    onValueChange = { upi = it },
+                    label = { Text("UPI ID (e.g. you@okhdfcbank)") },
+                    supportingText = {
+                        Text(
+                            if (upiValid) "Friends use this to pay you via UPI"
+                            else "UPI IDs look like name@bank",
+                            color = if (upiValid) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    singleLine = true,
+                    isError = !upiValid,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                enabled = name.isNotBlank() && upiValid,
+                onClick = { onSave(name, upi) },
+            ) { Text("Save", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
 
 @Preview(showBackground = true, device = "spec:width=411dp,height=891dp")
 @Composable

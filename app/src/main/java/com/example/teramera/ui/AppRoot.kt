@@ -86,6 +86,8 @@ class SessionViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val syncRepository: com.example.teramera.data.sync.SyncRepository,
     private val updateManager: com.example.teramera.core.update.AppUpdateManager,
+    private val deviceTokenUploader: com.example.teramera.core.push.DeviceTokenUploader,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
 ) : ViewModel() {
 
     private val _availableUpdate = MutableStateFlow<com.example.teramera.core.update.UpdateInfo?>(null)
@@ -98,6 +100,18 @@ class SessionViewModel @Inject constructor(
         viewModelScope.launch {
             syncRepository.refreshNow()
             _availableUpdate.value = updateManager.checkForUpdate(BuildConfig.VERSION_CODE)
+            registerPushToken()
+        }
+    }
+
+    /** Registers the FCM token once Firebase is configured and we have a session. */
+    private fun registerPushToken() {
+        runCatching {
+            if (com.google.firebase.FirebaseApp.getApps(appContext).isEmpty()) return
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    viewModelScope.launch { deviceTokenUploader.upload(token) }
+                }
         }
     }
 
@@ -163,14 +177,30 @@ private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
         activity?.addOnNewIntentListener(newIntentListener)
         onDispose { activity?.removeOnNewIntentListener(newIntentListener) }
     }
-    androidx.compose.runtime.LaunchedEffect(loggedIn, pendingInvite) {
-        val groupId = pendingInvite
-        if (loggedIn == true && groupId != null) {
-            sessionViewModel.joinGroup(groupId) { id ->
-                navController.navigate(Routes.groupDetail(id))
-            }
-            pendingInvite = null
-        }
+    // invites require explicit confirmation — a malicious app could fire the deep link
+    val uuidLike = remember { Regex("^[0-9a-fA-F-]{8,64}$") }
+    val validInvite = pendingInvite?.takeIf { uuidLike.matches(it) }
+    if (loggedIn == true && validInvite != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                pendingInvite = null
+            },
+            shape = MaterialTheme.shapes.large,
+            title = { Text("Join group?") },
+            text = { Text("You've been invited to a teramera group. Your name and balances will be visible to its members.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val groupId = validInvite
+                    pendingInvite = null
+                    sessionViewModel.joinGroup(groupId) { id ->
+                        navController.navigate(Routes.groupDetail(id))
+                    }
+                }) { Text("Join", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingInvite = null }) { Text("Not now") }
+            },
+        )
     }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: Routes.HOME

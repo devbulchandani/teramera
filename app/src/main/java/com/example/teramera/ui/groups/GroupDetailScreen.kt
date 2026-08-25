@@ -53,6 +53,7 @@ fun GroupDetailScreen(
 ) {
     val uiState by viewModel.detail.collectAsStateWithLifecycle()
     val addMemberState by viewModel.addMemberState.collectAsStateWithLifecycle()
+    val expenseEditState by viewModel.expenseEditState.collectAsStateWithLifecycle()
 
     // loading / error / empty states instead of a blank screen
     if (uiState.loading) {
@@ -107,6 +108,15 @@ fun GroupDetailScreen(
         )
     }
 
+    if (expenseEditState.visible) {
+        EditExpenseDialog(
+            state = expenseEditState,
+            onSave = viewModel::saveExpense,
+            onDelete = viewModel::deleteExpense,
+            onDismiss = viewModel::dismissEditExpense,
+        )
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         androidx.compose.foundation.layout.Box(
             modifier = Modifier
@@ -133,7 +143,7 @@ fun GroupDetailScreen(
                         item { SimplifiedDebtsCard(d) }
                     }
                     items(d.expenses, key = { it.id }) { line ->
-                        ExpenseRow(line)
+                        ExpenseRow(line, onClick = { viewModel.showEditExpense(line) })
                         Hairline()
                     }
                     if (d.expenses.isEmpty()) {
@@ -342,11 +352,15 @@ private fun SimplifiedDebtsCard(d: com.example.teramera.data.repository.GroupDet
 }
 
 @Composable
-private fun ExpenseRow(line: com.example.teramera.data.repository.ExpenseLine) {
+private fun ExpenseRow(
+    line: com.example.teramera.data.repository.ExpenseLine,
+    onClick: () -> Unit = {},
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(vertical = 14.dp),
     ) {
         Box(
@@ -508,6 +522,87 @@ private fun AddMemberDialog(
         },
         dismissButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun EditExpenseDialog(
+    state: GroupDetailViewModel.ExpenseEditState,
+    onSave: (title: String, rupees: Long) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val line = state.line
+    var title by androidx.compose.runtime.remember(line) {
+        androidx.compose.runtime.mutableStateOf(line?.title.orEmpty())
+    }
+    var amountText by androidx.compose.runtime.remember(line) {
+        androidx.compose.runtime.mutableStateOf(line?.amountMinor?.let { (it / 100).toString() }.orEmpty())
+    }
+    var confirmDelete by androidx.compose.runtime.remember(line) {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    val rupees = amountText.toLongOrNull() ?: 0L
+    val valid = title.isNotBlank() && rupees > 0
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = { Text(if (confirmDelete) "Delete expense?" else "Edit expense") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (confirmDelete) {
+                    Text(
+                        "“${line?.title}” will be removed and everyone's balances updated.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Description") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = amountText,
+                        onValueChange = { amountText = it.filter { ch -> ch.isDigit() }.take(9) },
+                        label = { Text("Amount (₹)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (!state.error.isNullOrBlank()) {
+                        Text(state.error, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (confirmDelete) {
+                androidx.compose.material3.TextButton(
+                    enabled = !state.busy,
+                    onClick = { onDelete(); onDismiss() },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+            } else {
+                androidx.compose.material3.TextButton(
+                    enabled = valid && !state.busy,
+                    onClick = { onSave(title, rupees) },
+                ) { Text("Save", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+            }
+        },
+        dismissButton = {
+            if (confirmDelete) {
+                androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) { Text("Keep it") }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    androidx.compose.material3.TextButton(onClick = { confirmDelete = true }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                    androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+                }
+            }
         },
     )
 }

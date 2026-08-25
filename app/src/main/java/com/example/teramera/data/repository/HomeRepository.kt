@@ -19,6 +19,8 @@ data class BalanceEntry(
     val isViolet: Boolean,
     val subtitle: String,
     val amountMinor: Long, // paise; positive = they owe you
+    val isGroup: Boolean = false,
+    val upiId: String? = null,
 )
 
 data class HomeData(
@@ -74,6 +76,7 @@ internal data class LedgerSnapshot(
                 isViolet = user.name.hashCode() % 2 == 0,
                 subtitle = subtitleFor(net),
                 amountMinor = net,
+                isGroup = false,
             )
         }.sortedByDescending { it.amountMinor }
 
@@ -89,6 +92,7 @@ internal data class LedgerSnapshot(
                 isViolet = true,
                 subtitle = "$memberCount members · $count expenses",
                 amountMinor = net,
+                isGroup = true,
             )
         }.sortedByDescending { it.amountMinor }
 
@@ -129,6 +133,8 @@ class HomeRepository @Inject constructor(
                             isViolet = row.name.hashCode() % 2 == 0,
                             subtitle = subtitleFor(row.netMinor),
                             amountMinor = row.netMinor,
+                            isGroup = false,
+                            upiId = row.upiId.ifEmpty { null },
                         )
                     },
                     groups = groups.map { row ->
@@ -139,9 +145,12 @@ class HomeRepository @Inject constructor(
                             isViolet = true,
                             subtitle = "₹${row.totalSpentMinor / 100} spent",
                             amountMinor = row.netForMeMinor,
+                            isGroup = true,
                         )
                     },
                 )
             }
         }
+
+    fun selfUser() = dao.selfUser()
 }

@@ -187,7 +187,63 @@ class GroupDetailViewModel @Inject constructor(
 
     private fun memberName(detail: GroupDetailDto, userId: String): String =
         detail.members.firstOrNull { it.id == userId }?.name ?: "?"
-}
 
-private fun initialsOfName(name: String): String =
+    // ---- edit / delete expense ----
+
+    data class ExpenseEditState(
+        val visible: Boolean = false,
+        val line: com.example.teramera.data.repository.ExpenseLine? = null,
+        val busy: Boolean = false,
+        val error: String? = null,
+    )
+
+    private val expenseEdit = MutableStateFlow(ExpenseEditState())
+    val expenseEditState: StateFlow<ExpenseEditState> = expenseEdit
+
+    fun showEditExpense(line: com.example.teramera.data.repository.ExpenseLine) {
+        expenseEdit.value = ExpenseEditState(visible = true, line = line)
+    }
+
+    fun dismissEditExpense() {
+        expenseEdit.value = ExpenseEditState()
+    }
+
+    fun saveExpense(title: String, rupees: Long) {
+        val line = expenseEdit.value.line ?: return
+        if (expenseEdit.value.busy) return
+        viewModelScope.launch {
+            expenseEdit.value = expenseEdit.value.copy(busy = true, error = null)
+            try {
+                ledgerApi.updateExpense(
+                    line.id,
+                    com.example.teramera.core.network.UpdateExpenseRequestDto(
+                        title = title.trim(),
+                        amountMinor = rupees * 100,
+                    ),
+                )
+                expenseEdit.value = ExpenseEditState()
+                refresh()
+            } catch (e: Exception) {
+                expenseEdit.value =
+                    expenseEdit.value.copy(busy = false, error = e.message ?: "Couldn't update")
+            }
+        }
+    }
+
+    fun deleteExpense() {
+        val line = expenseEdit.value.line ?: return
+        if (expenseEdit.value.busy) return
+        viewModelScope.launch {
+            expenseEdit.value = expenseEdit.value.copy(busy = true, error = null)
+            try {
+                ledgerApi.deleteExpense(line.id)
+                expenseEdit.value = ExpenseEditState()
+                refresh()
+            } catch (e: Exception) {
+                expenseEdit.value =
+                    expenseEdit.value.copy(busy = false, error = e.message ?: "Couldn't delete")
+            }
+        }
+    }
+}private fun initialsOfName(name: String): String =
     name.split(" ").filter { it.isNotBlank() }.take(2).map { it.first().uppercaseChar() }.joinToString("")

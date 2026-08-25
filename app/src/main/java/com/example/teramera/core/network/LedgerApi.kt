@@ -1,12 +1,14 @@
 package com.example.teramera.core.network
 
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-data class BalanceDto(val userId: String, val name: String, val netMinor: Long)
+data class BalanceDto(val userId: String, val name: String, val netMinor: Long, val upiId: String? = null)
 data class GroupSummaryDto(
     val id: String,
     val name: String,
@@ -47,7 +49,31 @@ data class CreateSettlementRequestDto(
 
 data class FoundUserDto(val id: String, val name: String, val phone: String?, val email: String?)
 data class AddMemberRequestDto(val userId: String)
-data class MemberDto(val id: String, val name: String, val isSelf: Boolean)
+data class MemberDto(val id: String, val name: String, val isSelf: Boolean, val upiId: String? = null)
+data class MeDto(val id: String, val phone: String?, val email: String?, val name: String?, val upiId: String?)
+data class UpdateMeRequestDto(val name: String? = null, val upiId: String? = null)
+data class ActivityEventDto(
+    val type: String,
+    val id: String,
+    val title: String? = null,
+    val payerName: String? = null,
+    val payeeName: String? = null,
+    val paidBySelf: Boolean = false,
+    val involvedSelf: Boolean = false,
+    val amountMinor: Long = 0,
+    val myShareMinor: Long = 0,
+    val groupName: String? = null,
+    val participantCount: Int = 0,
+    val methodLabel: String? = null,
+    val createdAt: Long = 0,
+)
+
+data class DeviceTokenRequestDto(val token: String)
+data class UpdateExpenseRequestDto(
+    val title: String? = null,
+    val amountMinor: Long? = null,
+    val participantIds: List<String>? = null,
+)
 data class GroupExpenseDto(
     val id: String,
     val title: String,
@@ -78,6 +104,27 @@ data class GroupDetailDto(
 )
 
 interface LedgerApi {
+
+    @GET("me")
+    suspend fun me(): MeDto
+
+    @PATCH("me")
+    suspend fun updateMe(@Body body: UpdateMeRequestDto): MeDto
+
+    @GET("activity")
+    suspend fun activity(): List<ActivityEventDto>
+
+    @POST("devices")
+    suspend fun registerDevice(@Body body: DeviceTokenRequestDto): Map<String, String>
+
+    @PATCH("expenses/{expenseId}")
+    suspend fun updateExpense(
+        @Path("expenseId") expenseId: String,
+        @Body body: UpdateExpenseRequestDto,
+    ): Map<String, String>
+
+    @DELETE("expenses/{expenseId}")
+    suspend fun deleteExpense(@Path("expenseId") expenseId: String): Map<String, String>
 
     @GET("groups")
     suspend fun myGroups(): List<GroupSummaryDto>

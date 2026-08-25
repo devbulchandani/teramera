@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE,
     name TEXT,
     avatar_url TEXT,
+    upi_id TEXT,
     created_at INTEGER NOT NULL
 );
 
@@ -52,7 +53,8 @@ CREATE TABLE IF NOT EXISTS expenses (
     split_type TEXT NOT NULL,
     currency TEXT NOT NULL DEFAULT 'INR',
     fx_rate_to_group REAL NOT NULL DEFAULT 1.0,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    parent_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS expense_shares (
@@ -70,6 +72,12 @@ CREATE TABLE IF NOT EXISTS settlements (
     amount_minor INTEGER NOT NULL,
     method TEXT NOT NULL,
     created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS device_tokens (
+    user_id TEXT NOT NULL REFERENCES users(id),
+    token TEXT PRIMARY KEY,
+    updated_at INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_requests(phone, created_at);

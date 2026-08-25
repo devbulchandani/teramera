@@ -26,6 +26,9 @@ interface Env {
     SMTP_PASS?: string;
     APP_VERSION_CODE?: string;
     APP_VERSION_NAME?: string;
+    FCM_PROJECT_ID?: string;
+    FCM_CLIENT_EMAIL?: string;
+    FCM_PRIVATE_KEY?: string;
 }
 
 type AppEnv = { Bindings: Env; Variables: { userId: string } };
@@ -43,12 +46,19 @@ const ACCESS_TTL_MINUTES = 15;
 const METHODS = new Set(["UPI", "CASH", "BANK"]);
 
 function jwtDeps(env: Env) {
+    if (!env.JWT_SECRET) throw new HttpError(500, "Server misconfigured: JWT_SECRET not set");
     return {
-        // override with: npx wrangler secret put JWT_SECRET
-        secret: env.JWT_SECRET || "dev-only-secret-change-me-0123456789abcdef",
+        secret: env.JWT_SECRET,
         accessTtlMinutes: ACCESS_TTL_MINUTES,
         refreshTtlDays: 30,
     };
+}
+
+/** Cryptographically secure 6-digit code. */
+function generateOtp(): string {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return String(buf[0] % 1_000_000).padStart(6, "0");
 }
 
 type Row = Record<string, any>;
@@ -114,6 +124,7 @@ interface UserRow {
     email: string | null;
     name: string | null;
     avatar_url: string | null;
+    upi_id?: string | null;
     email_verified?: number;
 }
 
@@ -158,7 +169,7 @@ app.post("/auth/otp/request", async (c) => {
     // invalidate previous unconsumed codes
     await run(c, "UPDATE otp_requests SET consumed = 1 WHERE phone = ? AND consumed = 0", phone);
 
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = generateOtp();
     const requestId = crypto.randomUUID();
     await run(
         c,
@@ -212,7 +223,8 @@ app.post("/auth/google", async (c) => {
     if (!claims || claims.email_verified !== "true") {
         return jsonError(c, 401, "Invalid Google ID token");
     }
-    if (c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_ID !== claims.aud) {
+    if (!c.env.GOOGLE_CLIENT_ID || c.env.GOOGLE_CLIENT_ID !== claims.aud) {
+        // without an exact audience match any Google-issued token for any app would work
         return jsonError(c, 401, "Invalid Google ID token audience");
     }
     if (Number(claims.exp) < Date.now() / 1000) return jsonError(c, 401, "Google ID token expired");
@@ -270,10 +282,18 @@ app.post("/auth/email/register", async (c) => {
         await run(c, "UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, users[0].id);
     }
 
-    // email verification OTP
+    // email verification OTP — throttled like phone codes
     const now = Date.now();
+    const recentReg = await rows<{ c: number }>(
+        c,
+        "SELECT COUNT(*) AS c FROM otp_requests WHERE phone = ? AND created_at > ?",
+        email, now - OTP_WINDOW_MILLIS,
+    );
+    if (recentReg[0].c >= OTP_MAX_REQUESTS) {
+        return jsonError(c, 429, "Too many codes requested. Try again later.");
+    }
     await run(c, "UPDATE otp_requests SET consumed = 1 WHERE phone = ? AND consumed = 0", email);
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = generateOtp();
     const requestId = crypto.randomUUID();
     await run(
         c,
@@ -287,9 +307,13 @@ app.post("/auth/email/register", async (c) => {
         `Your teramera code is ${code}. It expires in 5 minutes.`,
     );
 
+    // codes are NEVER returned to the client unless the operator explicitly
+    // opts in via EXPOSE_DEV_OTP — mail-send failure must not fail auth open
     const response: Record<string, unknown> = { requestId };
-    if (status === "logged") response.devCode = code;
-    if (c.env.EXPOSE_DEV_OTP === "true" && !response.devCode) response.devCode = code;
+    if (status !== "sent" && c.env.EXPOSE_DEV_OTP !== "true") {
+        console.error(`mail delivery failed (${status}) for sign-in code`);
+    }
+    if (c.env.EXPOSE_DEV_OTP === "true") response.devCode = code;
     return c.json(response);
 });
 
@@ -320,8 +344,16 @@ app.post("/auth/email/otp", async (c) => {
     if (!user) return jsonError(c, 404, "No teramera account with that email");
 
     const now = Date.now();
+    const recentOtp = await rows<{ c: number }>(
+        c,
+        "SELECT COUNT(*) AS c FROM otp_requests WHERE phone = ? AND created_at > ?",
+        email, now - OTP_WINDOW_MILLIS,
+    );
+    if (recentOtp[0].c >= OTP_MAX_REQUESTS) {
+        return jsonError(c, 429, "Too many codes requested. Try again later.");
+    }
     await run(c, "UPDATE otp_requests SET consumed = 1 WHERE phone = ? AND consumed = 0", email);
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = generateOtp();
     const requestId = crypto.randomUUID();
     await run(
         c,
@@ -335,9 +367,13 @@ app.post("/auth/email/otp", async (c) => {
         `Your teramera code is ${code}. It expires in 5 minutes.`,
     );
 
+    // codes are NEVER returned to the client unless the operator explicitly
+    // opts in via EXPOSE_DEV_OTP — mail-send failure must not fail auth open
     const response: Record<string, unknown> = { requestId };
-    if (status === "logged") response.devCode = code;
-    if (c.env.EXPOSE_DEV_OTP === "true" && !response.devCode) response.devCode = code;
+    if (status !== "sent" && c.env.EXPOSE_DEV_OTP !== "true") {
+        console.error(`mail delivery failed (${status}) for sign-in code`);
+    }
+    if (c.env.EXPOSE_DEV_OTP === "true") response.devCode = code;
     return c.json(response);
 });
 
@@ -401,16 +437,37 @@ app.get("/me", async (c) => {
         phone: user.phone ?? "",
         email: user.email ?? "",
         name: user.name ?? "",
+        upiId: user.upi_id ?? "",
     });
 });
 
+function validUpiId(upi: string): boolean {
+    return /^[\w.\-]{2,64}@[a-zA-Z]{2,32}$/.test(upi);
+}
+
 app.patch("/me", async (c) => {
-    const body = await c.req.json<{ name?: string }>();
-    const name = (body.name ?? "").trim();
-    if (name.length < 1 || name.length > 60) return jsonError(c, 400, "Name must be 1-60 characters");
-    await run(c, "UPDATE users SET name = ? WHERE id = ?", name, c.get("userId"));
+    const body = await c.req.json<{ name?: string; upiId?: string }>();
+    const updates: string[] = [];
+    const params: unknown[] = [];
+
+    if (body.name !== undefined) {
+        const name = body.name.trim();
+        if (name.length < 1 || name.length > 60) return jsonError(c, 400, "Name must be 1-60 characters");
+        updates.push("name = ?");
+        params.push(name);
+    }
+    if (body.upiId !== undefined) {
+        const upi = body.upiId.trim();
+        if (upi.length > 0 && !validUpiId(upi)) return jsonError(c, 400, "UPI ID must look like name@bank");
+        updates.push("upi_id = ?");
+        params.push(upi || null);
+    }
+    if (updates.length === 0) return jsonError(c, 400, "Nothing to update");
+
+    params.push(c.get("userId"));
+    await run(c, `UPDATE users SET ${updates.join(", ")} WHERE id = ?`, ...params);
     const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", c.get("userId"));
-    return c.json({ id: user.id, phone: user.phone ?? "", email: user.email ?? "", name: user.name ?? "" });
+    return c.json({ id: user.id, phone: user.phone ?? "", email: user.email ?? "", name: user.name ?? "", upiId: user.upi_id ?? "" });
 });
 
 // ---------- groups ----------
@@ -631,7 +688,7 @@ app.get("/groups/:groupId/detail", async (c) => {
     const members = [];
     for (const memberId of memberIds) {
         const [u] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", memberId);
-        members.push({ id: memberId, name: u?.name ?? "?", isSelf: memberId === userId });
+        members.push({ id: memberId, name: u?.name ?? "?", isSelf: memberId === userId, upiId: u?.upi_id ?? "" });
     }
 
     const expenses = await rows<Row>(
@@ -810,6 +867,8 @@ app.post("/expenses", async (c) => {
     }
 
     const createdAt = Date.now();
+    // one shared parent id ties the per-payment rows of a logical expense together
+    const parentId = crypto.randomUUID();
     const createdIds: string[] = [];
     for (const payment of payments) {
         const id = crypto.randomUUID();
@@ -818,11 +877,11 @@ app.post("/expenses", async (c) => {
             : largestRemainderAllocate(payment.amountMinor);
         await run(
             c,
-            `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at, parent_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id, body.groupId ?? null, payment.userId, body.title.trim(),
             payment.amountMinor, body.splitType, body.currency ?? "INR",
-            body.fxRateToGroup ?? 1.0, createdAt,
+            body.fxRateToGroup ?? 1.0, createdAt, parentId,
         );
         for (const [uid, minor] of allocation.entries()) {
             if (minor > 0) {
@@ -835,7 +894,126 @@ app.post("/expenses", async (c) => {
         }
         createdIds.push(id);
     }
+    // notify participants (except the payers, who did the adding) — best effort
+    const actorIds = new Set(payments.map((p) => p.userId));
+    if (c.env.FCM_PROJECT_ID && c.env.FCM_CLIENT_EMAIL && c.env.FCM_PRIVATE_KEY) {
+        c.executionCtx.waitUntil((async () => {
+            const [actor] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", payments[0].userId);
+            let groupName: string | null = null;
+            if (body.groupId) {
+                const [g] = await rows<{ name: string }>(c, "SELECT name FROM groups WHERE id = ?", body.groupId);
+                groupName = g?.name ?? null;
+            }
+            const title = body.title?.trim() ?? "";
+            await pushToUsers(
+                c,
+                participantIds.filter((uid) => !actorIds.has(uid)),
+                `${actor?.name ?? "Someone"} added an expense`,
+                `“${title}”${groupName ? ` · ${groupName}` : ""} · ₹${((body.amountMinor ?? 0) / 100).toFixed(0)}`,
+            );
+        })());
+    }
     return c.json({ id: createdIds[0], amountMinor: body.amountMinor, shareCount: participantIds.length });
+});
+
+// ---------- edit / delete expense ----------
+
+app.patch("/expenses/:expenseId", async (c) => {
+    const userId = c.get("userId");
+    const expenseId = c.req.param("expenseId");
+    const [expense] = await rows<Row>(c, "SELECT * FROM expenses WHERE id = ?", expenseId);
+    if (!expense) return jsonError(c, 404, "Expense not found");
+
+    if (expense.parent_id == null) return jsonError(c, 409, "Expense is missing its parent link and cannot be edited");
+    if (expense.group_id) await requireMember(c, expense.group_id, userId);
+    // all rows of a logical expense share an immutable parent_id
+    const siblings = await rows<Row>(c, "SELECT * FROM expenses WHERE parent_id = ?", expense.parent_id);
+    const [first] = await rows<Row>(
+        c,
+        "SELECT paid_by_user_id FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
+        expense.parent_id,
+    );
+    if (first?.paid_by_user_id !== userId) return jsonError(c, 403, "Only the person who added this expense can edit it");
+
+    const body = await c.req.json<{ title?: string; amountMinor?: number; participantIds?: string[] }>();
+    const title = body.title?.trim() ?? expense.title;
+    if (!title) return jsonError(c, 400, "title is required");
+    const totalMinor = body.amountMinor ?? siblingTotal(siblings.length, expense.amount_minor);
+    if (totalMinor <= 0) return jsonError(c, 400, "Amount must be positive");
+
+    let participantIds: string[] | null = null;
+    if (body.participantIds && body.participantIds.length > 0) {
+        participantIds = [...new Set(body.participantIds.filter(Boolean))];
+        for (const pid of participantIds) {
+            const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", pid);
+            if (exists.length === 0) return jsonError(c, 400, `Unknown user: ${pid}`);
+        }
+    }
+
+    // re-split EQUAL across participants (or keep existing shares when unchanged)
+    let shares: { user_id: string; share_amount_minor: number }[];
+    if (participantIds && participantIds.length >= 2) {
+        const split = computeSplit({ type: "EQUAL", totalMinor, participants: participantIds, rawValues: {} });
+        if (!split.ok) return jsonError(c, 400, split.reason);
+        shares = split.shares.map((s) => ({ user_id: s.userId, share_amount_minor: s.amountMinor }));
+    } else {
+        const existing = await rows<Row>(c, "SELECT user_id, share_amount_minor FROM expense_shares WHERE expense_id = ?", expenseId);
+        const oldTotal = existing.reduce((a, r) => a + r.share_amount_minor, 0);
+        shares = existing.map((r) => ({ user_id: r.user_id, share_amount_minor: Math.floor((r.share_amount_minor * totalMinor) / oldTotal) }));
+        // distribute rounding remainder to the first participant
+        const diff = totalMinor - shares.reduce((a, s) => a + s.share_amount_minor, 0);
+        if (shares.length > 0 && diff !== 0) shares[0].share_amount_minor += diff;
+    }
+    if (shares.length < 2) return jsonError(c, 400, "At least two people required");
+
+    const perPayer = Math.floor(totalMinor / siblings.length);
+    let remainder = totalMinor - perPayer * siblings.length;
+    for (const sib of siblings) {
+        const amount = perPayer + (remainder-- > 0 ? 1 : 0);
+        await run(
+            c,
+            "UPDATE expenses SET title = ?, amount_minor = ? WHERE id = ?",
+            title, amount, sib.id,
+        );
+        await run(c, "DELETE FROM expense_shares WHERE expense_id = ?", sib.id);
+        for (const share of shares) {
+            if (share.share_amount_minor > 0) {
+                await run(
+                    c,
+                    "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) VALUES (?, ?, ?)",
+                    sib.id, share.user_id, share.share_amount_minor,
+                );
+            }
+        }
+    }
+    return c.json({ status: "updated", id: expenseId, amountMinor: totalMinor });
+});
+
+function siblingTotal(count: number, singleAmount: number): number {
+    return count > 0 ? singleAmount * count : singleAmount;
+}
+
+app.delete("/expenses/:expenseId", async (c) => {
+    const userId = c.get("userId");
+    const expenseId = c.req.param("expenseId");
+    const [expense] = await rows<Row>(c, "SELECT * FROM expenses WHERE id = ?", expenseId);
+    if (!expense) return jsonError(c, 404, "Expense not found");
+
+    if (expense.parent_id == null) return jsonError(c, 409, "Expense is missing its parent link and cannot be deleted");
+    if (expense.group_id) await requireMember(c, expense.group_id, userId);
+    const [creator] = await rows<Row>(
+        c,
+        "SELECT paid_by_user_id FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
+        expense.parent_id,
+    );
+    if (creator?.paid_by_user_id !== userId) return jsonError(c, 403, "Only the person who added this expense can delete it");
+    const siblings = await rows<Row>(c, "SELECT id FROM expenses WHERE parent_id = ?", expense.parent_id);
+
+    for (const sib of siblings) {
+        await run(c, "DELETE FROM expense_shares WHERE expense_id = ?", sib.id);
+        await run(c, "DELETE FROM expenses WHERE id = ?", sib.id);
+    }
+    return c.json({ status: "deleted", id: expenseId });
 });
 
 // ---------- settlements ----------
@@ -918,11 +1096,192 @@ app.get("/balances", async (c) => {
 
     const result = [];
     for (const [uid, value] of net.entries()) {
-        const [user] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", uid);
-        result.push({ userId: uid, name: user?.name ?? "?", netMinor: value });
+        const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", uid);
+        result.push({ userId: uid, name: user?.name ?? "?", netMinor: value, upiId: user?.upi_id ?? "" });
     }
     return c.json(result);
 });
+
+// ---------- activity feed ----------
+
+/** Recent expenses + settlements across everything involving the caller. */
+app.get("/activity", async (c) => {
+    const selfId = c.get("userId");
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+
+    const expenses = await rows<Row>(
+        c,
+        `SELECT DISTINCT e.* FROM expenses e
+         LEFT JOIN expense_shares s ON s.expense_id = e.id
+         WHERE e.paid_by_user_id = ? OR s.user_id = ?
+         ORDER BY e.created_at DESC LIMIT ?`,
+        selfId, selfId, limit,
+    );
+    const expenseEvents = [];
+    for (const expense of expenses) {
+        const shares = await rows<Row>(c, "SELECT user_id, share_amount_minor FROM expense_shares WHERE expense_id = ?", expense.id);
+        const [payer] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", expense.paid_by_user_id);
+        let groupName: string | null = null;
+        if (expense.group_id) {
+            const [g] = await rows<{ name: string }>(c, "SELECT name FROM groups WHERE id = ?", expense.group_id);
+            groupName = g?.name ?? null;
+        }
+        // multi-payer rows share one logical expense; show it once with its full amount
+        const parentId = expense.parent_id ?? expense.id;
+        const [agg] = await rows<{ n: number; t: number }>(
+            c,
+            "SELECT COUNT(*) AS n, SUM(amount_minor) AS t FROM expenses WHERE parent_id = ?",
+            parentId,
+        );
+        const rowCount = agg?.n ?? 1;
+        if (rowCount > 1) {
+            const [first] = await rows<{ id: string }>(
+                c,
+                "SELECT id FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
+                parentId,
+            );
+            if (first?.id !== expense.id) continue;
+        }
+        const logicalTotal = rowCount > 1 ? agg?.t ?? expense.amount_minor : expense.amount_minor;
+        expenseEvents.push({
+            type: "expense" as const,
+            id: expense.id,
+            title: expense.title,
+            payerName: payer?.name ?? "?",
+            paidBySelf: expense.paid_by_user_id === selfId,
+            amountMinor: logicalTotal,
+            myShareMinor: shares.find((s) => s.user_id === selfId)?.share_amount_minor ?? 0,
+            groupName,
+            participantCount: shares.length,
+            createdAt: expense.created_at,
+        });
+    }
+
+    const settlements = await rows<Row>(
+        c,
+        "SELECT * FROM settlements WHERE payer_user_id = ? OR paid_to_user_id = ? ORDER BY created_at DESC LIMIT ?",
+        selfId, selfId, limit,
+    );
+    const settlementEvents = [];
+    for (const s of settlements) {
+        const [payer] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", s.payer_user_id);
+        const [payee] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", s.paid_to_user_id);
+        settlementEvents.push({
+            type: "settlement" as const,
+            id: s.id,
+            payerName: payer?.name ?? "?",
+            payeeName: payee?.name ?? "?",
+            involvedSelf: true,
+            amountMinor: s.amount_minor,
+            methodLabel: String(s.method).toUpperCase(),
+            createdAt: s.created_at,
+        });
+    }
+
+    return c.json(
+        [...expenseEvents, ...settlementEvents].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit),
+    );
+});
+
+// ---------- push notification devices ----------
+
+app.post("/devices", async (c) => {
+    const userId = c.get("userId");
+    const body = await c.req.json<{ token?: string }>();
+    if (!body.token) return jsonError(c, 400, "token is required");
+    await run(
+        c,
+        // on conflict keep the original owner — FCM tokens are bearer credentials
+        `INSERT INTO device_tokens (user_id, token, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(token) DO UPDATE SET updated_at = excluded.updated_at`,
+        userId, body.token, Date.now(),
+    );
+    return c.json({ status: "registered" });
+});
+
+app.delete("/devices", async (c) => {
+    const userId = c.get("userId");
+    const body = await c.req.json<{ token?: string }>().catch(() => ({ token: undefined }));
+    await run(c, "DELETE FROM device_tokens WHERE token = ? AND user_id = ?", body.token ?? "", userId);
+    return c.json({ status: "removed" });
+});
+
+// ---------- fcm (http v1) ----------
+
+function pemToBytes(pem: string): Uint8Array {
+    const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/, "")
+        .replace(/-----END PRIVATE KEY-----/, "")
+        .replace(/\s+/g, "");
+    const binary = atob(b64);
+    return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+}
+
+async function fcmAccessToken(env: any): Promise<string | null> {
+    try {
+        if (!env.FCM_PROJECT_ID || !env.FCM_CLIENT_EMAIL || !env.FCM_PRIVATE_KEY) return null;
+        const now = Math.floor(Date.now() / 1000);
+        const enc = (o: unknown) =>
+            btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        const input = `${enc({ alg: "RS256", typ: "JWT" })}.${enc({
+            iss: env.FCM_CLIENT_EMAIL,
+            scope: "https://www.googleapis.com/auth/firebase.messaging",
+            aud: "https://oauth2.googleapis.com/token",
+            iat: now,
+            exp: now + 3600,
+        })}`;
+        const key = await crypto.subtle.importKey(
+            "pkcs8",
+            pemToBytes(env.FCM_PRIVATE_KEY),
+            { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+            false,
+            ["sign"],
+        );
+        const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(input));
+        const jwt = `${input}.${btoa(String.fromCharCode(...new Uint8Array(sig)))
+            .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+        const res = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+        });
+        if (!res.ok) return null;
+        return (await res.json<any>()).access_token ?? null;
+    } catch (e) {
+        console.error("fcm auth failed", e);
+        return null;
+    }
+}
+
+/** Best-effort push to every device of the given users; never throws. */
+async function pushToUsers(c: any, userIds: string[], title: string, bodyText: string) {
+    try {
+        if (userIds.length === 0) return;
+        const token = await fcmAccessToken(c.env);
+        if (!token) return;
+        const unique = [...new Set(userIds)];
+        for (const uid of unique) {
+            const devices = await rows<{ token: string }>(
+                c,
+                "SELECT token FROM device_tokens WHERE user_id = ? AND updated_at > ?",
+                uid, Date.now() - 90 * 24 * 60 * 60 * 1000,
+            );
+            for (const d of devices) {
+                await fetch(`https://fcm.googleapis.com/v1/projects/${c.env.FCM_PROJECT_ID}/messages:send`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        message: {
+                            token: d.token,
+                            notification: { title, body: bodyText },
+                        },
+                    }),
+                }).catch(() => null);
+            }
+        }
+    } catch (e) {
+        console.error("push failed", e);
+    }
+}
 
 function normalizePhone(raw: string): string | null {
     let cleaned = raw.replace(/[\s()\-]/g, "");

@@ -11,6 +11,7 @@ import com.example.teramera.core.network.EmailOtpRequestDto
 import com.example.teramera.core.network.EmailRegisterRequestDto
 import com.example.teramera.core.network.OtpVerifyRequestDto
 import com.example.teramera.core.network.TokenStore
+import com.example.teramera.BuildConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -110,7 +111,7 @@ class LoginViewModel @Inject constructor(
                         loading = false,
                         step = LoginStep.CODE,
                         requestId = resp.requestId,
-                        devCode = resp.devCode,
+                        devCode = if (BuildConfig.DEBUG) resp.devCode else null,
                         code = "",
                     )
                 }
@@ -130,7 +131,7 @@ class LoginViewModel @Inject constructor(
                 val resp = authApi.emailOtp(EmailOtpRequestDto(email))
                 lastRequestId.value = resp.requestId
                 _state.update {
-                    it.copy(step = LoginStep.CODE, requestId = resp.requestId, devCode = resp.devCode, code = "")
+                    it.copy(step = LoginStep.CODE, requestId = resp.requestId, devCode = if (BuildConfig.DEBUG) resp.devCode else null, code = "")
                 }
             } catch (e: retrofit2.HttpException) {
                 _state.update { it.copy(error = parseErrorBody(e) ?: "Couldn't send a code") }

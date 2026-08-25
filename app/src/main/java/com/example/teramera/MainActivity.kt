@@ -15,9 +15,22 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        requestNotificationPermissionIfNeeded()
         setContent {
             TerameraTheme {
                 AppRoot()
+            }
+        }
+    }
+
+    /** Android 13+ requires a runtime grant before notifications can appear. */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            androidx.activity.result.contract.ActivityResultContracts.RequestPermission().also { contract ->
+                registerForActivityResult(contract) {}.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     }

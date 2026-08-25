@@ -4,6 +4,7 @@ import com.example.teramera.core.network.CreateExpenseRequestDto
 import com.example.teramera.core.network.CreateSettlementRequestDto
 import com.example.teramera.core.network.LedgerApi
 import com.example.teramera.core.network.TokenStore
+import com.example.teramera.data.local.SyncedActivityEntity
 import com.example.teramera.data.local.SyncedBalanceEntity
 import com.example.teramera.data.local.SyncedGroupEntity
 import com.example.teramera.data.local.TerameraDao
@@ -43,8 +44,21 @@ class SyncRepository @Inject constructor(
     suspend fun refreshNow(): Result = try {
         val now = System.currentTimeMillis()
 
+        // cache the signed-in profile (name/UPI) for greetings & settling
+        try {
+            val me = ledgerApi.me()
+            dao.insertUser(
+                com.example.teramera.data.local.UserEntity(
+                    id = me.id, name = me.name ?: "You", isSelf = true,
+                    email = me.email, upiId = me.upiId?.ifEmpty { null },
+                )
+            )
+        } catch (_: Exception) {
+            // profile refresh is best-effort
+        }
+
         val balances = ledgerApi.friendBalances().map { dto ->
-            SyncedBalanceEntity(userId = dto.userId, name = dto.name, netMinor = dto.netMinor, updatedAt = now)
+            SyncedBalanceEntity(userId = dto.userId, name = dto.name, netMinor = dto.netMinor, upiId = dto.upiId.orEmpty(), updatedAt = now)
         }
         dao.clearSyncedBalances()
         dao.insertSyncedBalances(balances)
@@ -61,9 +75,44 @@ class SyncRepository @Inject constructor(
         }
         dao.insertSyncedGroups(groups)
 
+        val activity = ledgerApi.activity().map { e ->
+            SyncedActivityEntity(
+                id = e.id,
+                type = e.type,
+                title = e.title,
+                counterpartyName = e.payerName,
+                secondaryName = e.payeeName,
+                paidBySelf = e.paidBySelf,
+                involvedSelf = e.involvedSelf,
+                amountMinor = e.amountMinor,
+                myShareMinor = e.myShareMinor,
+                groupName = e.groupName,
+                participantCount = e.participantCount,
+                methodLabel = e.methodLabel,
+                createdAt = e.createdAt,
+            )
+        }
+        dao.clearSyncedActivity()
+        dao.insertSyncedActivity(activity)
+
         Result.Success
     } catch (e: Exception) {
         Result.Failure(e.message ?: "Sync failed")
+    }
+
+    suspend fun updateProfile(name: String?, upiId: String?): Result = try {
+        ledgerApi.updateMe(com.example.teramera.core.network.UpdateMeRequestDto(name = name, upiId = upiId))
+        refreshNow()
+    } catch (e: Exception) {
+        Result.Failure(e.message ?: "Couldn't save profile")
+    }
+
+    /** Registers an FCM token so expense notifications reach this device. */
+    suspend fun registerDeviceToken(token: String): Boolean = try {
+        ledgerApi.registerDevice(com.example.teramera.core.network.DeviceTokenRequestDto(token))
+        true
+    } catch (_: Exception) {
+        false
     }
 
     /** Pushes an equal-split expense scoped to a group; server expands participants. */

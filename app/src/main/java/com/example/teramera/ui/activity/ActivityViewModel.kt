@@ -46,42 +46,34 @@ class ActivityViewModel @Inject constructor(
     dao: TerameraDao,
 ) : ViewModel() {
 
-    private val SELF_ID = "u_dev"
-
     val uiState: StateFlow<ActivityUiState> =
-        combine(dao.users(), dao.groups(), dao.expenses(), dao.shares(), dao.settlements()) {
-                users, groups, expenses, shares, settlements ->
-            val usersById = users.associateBy { it.id }
-            val groupsById = groups.associateBy { it.id }
-            val sharesByExpense = shares.groupBy { it.expenseId }
-
-            val expenseEvents = expenses.map { expense ->
-                val expenseShares = sharesByExpense[expense.id].orEmpty()
-                ActivityEvent.ExpenseAdded(
-                    id = "e${expense.id}",
-                    title = expense.title,
-                    payerName = usersById[expense.paidByUserId]?.name ?: "?",
-                    paidBySelf = expense.paidByUserId == SELF_ID,
-                    amountMinor = expense.amountMinor,
-                    myShareMinor = expenseShares.firstOrNull { it.userId == SELF_ID }?.amountMinor ?: 0L,
-                    groupName = expense.groupId?.let { groupsById[it]?.name },
-                    participantCount = expenseShares.size,
-                    createdAt = expense.createdAt,
-                )
-            }
-
-            val settlementEvents = settlements.map { s ->
-                ActivityEvent.SettlementMade(
-                    id = "s${s.id}",
-                    payerName = usersById[s.payerUserId]?.name ?: "?",
-                    payeeName = usersById[s.paidToUserId]?.name ?: "?",
-                    involvedSelf = s.payerUserId == SELF_ID || s.paidToUserId == SELF_ID,
-                    amountMinor = s.amountMinor,
-                    methodLabel = s.method.lowercase().replaceFirstChar { it.uppercase() },
-                    createdAt = s.createdAt,
-                )
-            }
-
-            ActivityUiState((expenseEvents + settlementEvents).sortedByDescending { it.createdAt })
+        combine(dao.syncedActivity(), dao.selfUser()) { events, self ->
+            ActivityUiState(
+                events.map { row ->
+                    if (row.type == "settlement") {
+                        ActivityEvent.SettlementMade(
+                            id = "s${row.id}",
+                            payerName = row.counterpartyName ?: "?",
+                            payeeName = row.secondaryName ?: "?",
+                            involvedSelf = row.involvedSelf,
+                            amountMinor = row.amountMinor,
+                            methodLabel = row.methodLabel ?: "",
+                            createdAt = row.createdAt,
+                        )
+                    } else {
+                        ActivityEvent.ExpenseAdded(
+                            id = "e${row.id}",
+                            title = row.title ?: "Expense",
+                            payerName = row.counterpartyName ?: "?",
+                            paidBySelf = row.paidBySelf,
+                            amountMinor = row.amountMinor,
+                            myShareMinor = row.myShareMinor,
+                            groupName = row.groupName,
+                            participantCount = row.participantCount,
+                            createdAt = row.createdAt,
+                        )
+                    }
+                },
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ActivityUiState())
 }

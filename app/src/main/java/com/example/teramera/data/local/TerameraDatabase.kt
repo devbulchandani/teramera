@@ -16,6 +16,8 @@ data class UserEntity(
     @PrimaryKey val id: String,
     val name: String,
     val isSelf: Boolean = false,
+    val email: String? = null,
+    val upiId: String? = null,
 )
 
 @Entity(tableName = "groups")
@@ -67,6 +69,7 @@ data class SyncedBalanceEntity(
     @PrimaryKey val userId: String,
     val name: String,
     val netMinor: Long,
+    val upiId: String = "",
     val updatedAt: Long,
 )
 
@@ -78,6 +81,24 @@ data class SyncedGroupEntity(
     val totalSpentMinor: Long,
     val netForMeMinor: Long,
     val updatedAt: Long,
+)
+
+@Entity(tableName = "synced_activity", primaryKeys = ["id", "type"])
+data class SyncedActivityEntity(
+    val id: String,
+    // "expense" | "settlement"
+    val type: String,
+    val title: String?,
+    val counterpartyName: String?,
+    val secondaryName: String?,
+    val paidBySelf: Boolean,
+    val involvedSelf: Boolean,
+    val amountMinor: Long,
+    val myShareMinor: Long,
+    val groupName: String?,
+    val participantCount: Int,
+    val methodLabel: String?,
+    val createdAt: Long,
 )
 
 @Dao
@@ -121,6 +142,21 @@ interface TerameraDao {
     @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
     suspend fun insertSyncedGroups(groups: List<SyncedGroupEntity>)
 
+    @Query("SELECT * FROM synced_activity ORDER BY createdAt DESC")
+    fun syncedActivity(): Flow<List<SyncedActivityEntity>>
+
+    @Query("DELETE FROM synced_activity")
+    suspend fun clearSyncedActivity()
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun insertSyncedActivity(events: List<SyncedActivityEntity>)
+
+    @Query("SELECT * FROM users WHERE isSelf = 1 LIMIT 1")
+    fun selfUser(): Flow<UserEntity?>
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun insertUser(user: UserEntity)
+
     @Insert suspend fun insertUsers(users: List<UserEntity>)
     @Insert suspend fun insertGroups(groups: List<GroupEntity>)
     @Insert suspend fun insertMemberships(memberships: List<MembershipEntity>)
@@ -139,8 +175,9 @@ interface TerameraDao {
         SettlementEntity::class,
         SyncedBalanceEntity::class,
         SyncedGroupEntity::class,
+        SyncedActivityEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class TerameraDatabase : RoomDatabase() {

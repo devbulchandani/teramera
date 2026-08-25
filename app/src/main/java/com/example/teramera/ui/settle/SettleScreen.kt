@@ -316,6 +316,25 @@ private fun PaymentMethod.label() = when (this) {
 
 @Composable
 private fun DoneStage(draft: SettleDraft, onDone: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    fun openUpiApp() {
+        val upi = draft.person.upiId ?: return
+        val rupees = java.math.BigDecimal(draft.amountMinor).movePointLeft(2).toPlainString()
+        val uri = android.net.Uri.parse("upi://pay").buildUpon()
+            .appendQueryParameter("pa", upi)
+            .appendQueryParameter("pn", draft.person.name)
+            .appendQueryParameter("am", rupees)
+            .appendQueryParameter("cu", "INR")
+            .appendQueryParameter("tn", "teramera")
+            .build()
+        try {
+            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri))
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(context, "No UPI app found on this phone", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -343,12 +362,30 @@ private fun DoneStage(draft: SettleDraft, onDone: () -> Unit) {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp),
         )
+        // the UPI intent pays from this phone, so it applies when I owe them
+        if (!draft.person.upiId.isNullOrBlank() && draft.person.amountMinor < 0) {
+            Button(
+                onClick = { openUpiApp() },
+                shape = RoundedCornerShape(16.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 24.dp)
+                    .height(56.dp),
+            ) {
+                Text("Pay ₹${formatInr(draft.amountMinor)} via UPI → ${draft.person.upiId}",
+                    style = MaterialTheme.typography.labelLarge)
+            }
+        }
         Button(
             onClick = onDone,
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 24.dp)
+                .padding(top = 12.dp)
                 .height(56.dp),
         ) {
             Text("Done", style = MaterialTheme.typography.labelLarge)
