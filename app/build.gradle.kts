@@ -13,11 +13,14 @@ val firebaseConfig: Map<*, *>? = project.file("google-services.json").takeIf { i
     groovy.json.JsonSlurper().parseText(it.readText()) as Map<*, *>
 }
 val firebaseProjectInfo = firebaseConfig?.get("project_info") as? Map<*, *>
-val firebaseClient = (firebaseConfig?.get("client") as? List<*>)?.firstOrNull() as? Map<*, *>
+val firebaseClientInfo = (firebaseConfig?.get("client") as? List<*>)?.firstOrNull()
+    ?.let { (it as? Map<*, *>)?.get("client_info") } as? Map<*, *>
+val firstApiKey = ((firebaseConfig?.get("client") as? List<*>)?.firstOrNull()
+    ?.let { (it as? Map<*, *>)?.get("api_key") } as? List<*>)?.firstOrNull() as? Map<*, *>
 val firebaseProjectId = firebaseProjectInfo?.get("project_id")?.toString() ?: ""
 val firebaseSenderId = firebaseProjectInfo?.get("project_number")?.toString() ?: ""
-val firebaseAppId = firebaseClient?.get("mobilesdk_app_id")?.toString() ?: ""
-val firebaseApiKey = firebaseClient?.get("api_key")?.toString() ?: ""
+val firebaseAppId = firebaseClientInfo?.get("mobilesdk_app_id")?.toString() ?: ""
+val firebaseApiKey = firstApiKey?.get("current_key")?.toString() ?: ""
 
 android {
     namespace = "com.example.teramera"
@@ -29,8 +32,8 @@ android {
         applicationId = "com.example.teramera"
         minSdk = 24
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.3.0"
+        versionCode = 5
+        versionName = "0.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
