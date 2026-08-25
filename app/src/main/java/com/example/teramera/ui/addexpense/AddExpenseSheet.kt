@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -52,9 +53,10 @@ fun AddExpenseSheet(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val draft = state.draft
 
-    // When opened from a group, lock the group once its membership data arrives.
+    // When opened from a group, lock the group and load its members. Re-fires when
+    // server mode flips on — the first pass can land before synced groups arrive.
     if (fixedGroupId != null) {
-        LaunchedEffect(fixedGroupId, state.membersByGroup[fixedGroupId]) {
+        LaunchedEffect(fixedGroupId, state.serverMode) {
             viewModel.setGroup(fixedGroupId)
         }
     }
@@ -638,11 +640,22 @@ private fun initialsOf(name: String): String =
 private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseViewModel) {
     val members = state.serverMembers
     if (members.isEmpty()) {
-        Text(
-            "Loading members…",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            Text(
+                when {
+                    state.membersLoading -> "Loading members…"
+                    state.membersError != null -> state.membersError
+                    else -> "No members found in this group"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!state.membersLoading && state.draft.groupId != null) {
+                TextButton(onClick = viewModel::retryMembers) {
+                    Text("Try again")
+                }
+            }
+        }
         return
     }
 

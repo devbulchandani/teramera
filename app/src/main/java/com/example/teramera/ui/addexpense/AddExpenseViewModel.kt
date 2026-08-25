@@ -61,9 +61,12 @@ data class AddExpenseUiState(
     val serverMode: Boolean = false,
     val serverMembers: List<com.example.teramera.core.network.MemberDto> = emptyList(),
     val selfServerId: String? = null,
+    val membersLoading: Boolean = false,
+    val membersError: String? = null,
 )
 
 private data class SaveState(val saving: Boolean = false, val error: String? = null)
+private data class MemberLoad(val loading: Boolean = false, val error: String? = null)
 private data class ServerState(
     val loggedIn: Boolean = false,
     val syncedGroups: List<GroupEntity> = emptyList(),
@@ -84,6 +87,7 @@ class AddExpenseViewModel @Inject constructor(
     private val SELF_ID = "u_dev"
     private val draft = MutableStateFlow(AddDraft())
     private val saveState = MutableStateFlow(SaveState())
+    private val memberLoad = MutableStateFlow(MemberLoad())
 
     private val localData = combine(dao.users(), dao.groups(), dao.memberships()) { users, groups, memberships ->
         Triple(users, groups, memberships.groupBy({ it.groupId }, { it.userId }))
@@ -101,7 +105,7 @@ class AddExpenseViewModel @Inject constructor(
     }
 
     val uiState: StateFlow<AddExpenseUiState> =
-        combine(localData, serverData, draft, saveState) { (users, localGroups, membersByGroup), server, d, save ->
+        combine(localData, serverData, draft, saveState, memberLoad) { (users, localGroups, membersByGroup), server, d, save, load ->
             val useServer = server.loggedIn && server.syncedGroups.isNotEmpty()
             val effectiveGroups = if (useServer) server.syncedGroups else localGroups
             var draftOut = d
@@ -120,6 +124,8 @@ class AddExpenseViewModel @Inject constructor(
                 serverMode = useServer,
                 serverMembers = serverMembers.value,
                 selfServerId = server.selfId,
+                membersLoading = load.loading,
+                membersError = load.error,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddExpenseUiState())
 
@@ -147,8 +153,8 @@ class AddExpenseViewModel @Inject constructor(
                 uiState.value.serverMode &&
                 uiState.value.groups.any { it.id == groupId }
             if (isServerGroup) {
-                try {
-                    serverMembers.value = ledgerApi.groupDetail(groupId!!).members
+                val loaded = loadServerMembers(groupId!!)
+                if (loaded) {
                     draft.update { d ->
                         d.copy(
                             groupId = groupId,
@@ -158,10 +164,10 @@ class AddExpenseViewModel @Inject constructor(
                             splitType = SplitType.EQUAL,
                         )
                     }
-                    return@launch
-                } catch (_: Exception) {
-                    // fall through to local behaviour
                 }
+                // on failure the error is surfaced in the UI with a retry — don't
+                // silently fall through to local mode, that dead-ends at no members
+                return@launch
             }
             draft.update { draft ->
                 val members = currentMembers(groupId)
@@ -171,6 +177,30 @@ class AddExpenseViewModel @Inject constructor(
                     else draft.included.filter { it in members || it == SELF_ID }
                         .toSet().ifEmpty { setOf(SELF_ID) + members },
                 )
+            }
+        }
+    }
+
+    private suspend fun loadServerMembers(groupId: String): Boolean {
+        memberLoad.value = MemberLoad(loading = true)
+        return try {
+            serverMembers.value = ledgerApi.groupDetail(groupId).members
+            memberLoad.value = MemberLoad()
+            true
+        } catch (e: Exception) {
+            serverMembers.value = emptyList()
+            memberLoad.value = MemberLoad(error = e.message ?: "Couldn't load group members")
+            false
+        }
+    }
+
+    fun retryMembers() {
+        val groupId = draft.value.groupId ?: return
+        viewModelScope.launch {
+            if (loadServerMembers(groupId)) {
+                draft.update { d ->
+                    d.copy(includedServer = d.includedServer.ifEmpty { serverMembers.value.map { it.id }.toSet() })
+                }
             }
         }
     }
