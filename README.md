@@ -34,10 +34,20 @@ opendesign/ Design system + hi-fi mockups (opendesign plugin)
 
 ### Android app
 
-```bash
-# 1. Add your Google OAuth web client ID (from Google Cloud Console)
-echo "google.webClientId=<WEB_CLIENT_ID>" >> local.properties
+The Google OAuth **web client ID** must be available to the build. It is read in this priority order:
 
+1. **User-level** `~/.gradle/gradle.properties` (recommended — survives Android Studio regenerating `local.properties`):
+   ```bash
+   mkdir -p ~/.gradle
+   echo 'google.webClientId=<WEB_CLIENT_ID>' >> ~/.gradle/gradle.properties
+   ```
+2. **Repo** `local.properties` (only useful if you've stopped Android Studio from regenerating it):
+   ```bash
+   echo "google.webClientId=<WEB_CLIENT_ID>" >> local.properties
+   ```
+3. The `GOOGLE_WEB_CLIENT_ID` environment variable (the release CI workflow passes this from a repo variable).
+
+```bash
 # 2. Build & install
 ./gradlew installDebug
 ```

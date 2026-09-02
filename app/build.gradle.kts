@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -32,17 +33,26 @@ android {
         applicationId = "com.example.teramera"
         minSdk = 24
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.3.4"
+        versionCode = 9
+        versionName = "0.3.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Google Sign-In: put google.webClientId=<WEB client id> in local.properties
+        // Google Sign-In: prefer the user-level ~/.gradle/gradle.properties
+        // (survives Android Studio regenerating local.properties), fall back to
+        // the repo's local.properties, then to the GOOGLE_WEB_CLIENT_ID env var
+        // (set by the release CI workflow).
         val props = Properties().apply {
-            val f = rootProject.file("local.properties")
-            if (f.exists()) f.inputStream().use { load(it) }
+            listOf(
+                File(System.getProperty("user.home"), ".gradle/gradle.properties"),
+                rootProject.file("local.properties"),
+            ).forEach { f ->
+                if (f.exists()) f.inputStream().use { load(it) }
+            }
         }
-        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${props.getProperty("google.webClientId", "")}\"")
+        val webClientId = props.getProperty("google.webClientId", "")
+            .ifBlank { System.getenv("GOOGLE_WEB_CLIENT_ID") ?: "" }
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$webClientId\"")
 
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"$firebaseProjectId\"")
         buildConfigField("String", "FIREBASE_SENDER_ID", "\"$firebaseSenderId\"")

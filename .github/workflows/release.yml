@@ -99,6 +99,12 @@ jobs:
           fi
 
       - name: Build debug APK
+        env:
+          # app/build.gradle.kts reads this when google.webClientId is missing
+          # from local.properties and ~/.gradle/gradle.properties. The repo
+          # variable is intentionally public (the web client id is on every
+          # signed-in APK's manifest).
+          GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID || '' }}
         run: ./gradlew :app:assembleDebug --console=plain --no-daemon
 
       - name: Ship APK into worker assets
