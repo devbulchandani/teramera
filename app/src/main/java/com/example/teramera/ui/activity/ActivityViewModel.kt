@@ -6,7 +6,7 @@ import com.example.teramera.data.local.TerameraDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -46,8 +46,10 @@ class ActivityViewModel @Inject constructor(
     dao: TerameraDao,
 ) : ViewModel() {
 
+    // Plain map → only re-emits when *this* table changes (was previously also
+    // observing selfUser, which fired on every sync, causing extra recompositions).
     val uiState: StateFlow<ActivityUiState> =
-        combine(dao.syncedActivity(), dao.selfUser()) { events, self ->
+        dao.syncedActivity().map { events ->
             ActivityUiState(
                 events.map { row ->
                     if (row.type == "settlement") {

@@ -26,13 +26,20 @@ data class GroupEntity(
     val name: String,
 )
 
-@Entity(tableName = "memberships", primaryKeys = ["groupId", "userId"])
+@Entity(
+    tableName = "memberships",
+    primaryKeys = ["groupId", "userId"],
+    indices = [androidx.room.Index(value = ["userId"])],
+)
 data class MembershipEntity(
     val groupId: String,
     val userId: String,
 )
 
-@Entity(tableName = "expenses")
+@Entity(
+    tableName = "expenses",
+    indices = [androidx.room.Index(value = ["groupId"])],
+)
 data class ExpenseEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val groupId: String?,
@@ -115,8 +122,21 @@ interface TerameraDao {
     @Query("SELECT * FROM expenses")
     fun expenses(): Flow<List<ExpenseEntity>>
 
+    @Query("SELECT * FROM expenses WHERE groupId = :groupId ORDER BY createdAt DESC")
+    fun expensesForGroup(groupId: String): Flow<List<ExpenseEntity>>
+
     @Query("SELECT * FROM expense_shares")
     fun shares(): Flow<List<ExpenseShareEntity>>
+
+    @Query(
+        "SELECT s.* FROM expense_shares s " +
+        "INNER JOIN expenses e ON e.id = s.expenseId " +
+        "WHERE e.groupId = :groupId"
+    )
+    fun sharesForGroup(groupId: String): Flow<List<ExpenseShareEntity>>
+
+    @Query("SELECT * FROM memberships WHERE groupId = :groupId")
+    fun membershipsForGroup(groupId: String): Flow<List<MembershipEntity>>
 
     @Query("SELECT * FROM settlements")
     fun settlements(): Flow<List<SettlementEntity>>
@@ -132,6 +152,13 @@ interface TerameraDao {
 
     @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
     suspend fun insertSyncedBalances(balances: List<SyncedBalanceEntity>)
+
+    /** Clear + insert inside one transaction → one Flow emission downstream. */
+    @androidx.room.Transaction
+    suspend fun replaceSyncedBalances(balances: List<SyncedBalanceEntity>) {
+        clearSyncedBalances()
+        insertSyncedBalances(balances)
+    }
 
     @Query("SELECT * FROM synced_groups ORDER BY netForMeMinor DESC")
     fun syncedGroups(): Flow<List<SyncedGroupEntity>>
@@ -150,6 +177,13 @@ interface TerameraDao {
 
     @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
     suspend fun insertSyncedActivity(events: List<SyncedActivityEntity>)
+
+    /** Clear + insert inside one transaction → one Flow emission downstream. */
+    @androidx.room.Transaction
+    suspend fun replaceSyncedActivity(events: List<SyncedActivityEntity>) {
+        clearSyncedActivity()
+        insertSyncedActivity(events)
+    }
 
     @Query("SELECT * FROM users WHERE isSelf = 1 LIMIT 1")
     fun selfUser(): Flow<UserEntity?>
@@ -177,7 +211,7 @@ interface TerameraDao {
         SyncedGroupEntity::class,
         SyncedActivityEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class TerameraDatabase : RoomDatabase() {

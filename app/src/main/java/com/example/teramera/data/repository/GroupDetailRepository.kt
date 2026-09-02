@@ -1,6 +1,5 @@
 package com.example.teramera.data.repository
 
-import com.example.teramera.data.local.ExpenseEntity
 import com.example.teramera.data.local.TerameraDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -36,20 +35,30 @@ data class GroupDetail(
     val worstCasePayments: Int,
 )
 
+/**
+ * Per-group Room flows. Replaces the old approach of watching every expense
+ * / share / membership across all groups and filtering inside the VM —
+ * every group-detail recompute is now scoped to this single group, so it
+ * runs in O(group size) not O(all my groups).
+ */
 @Singleton
 class GroupDetailRepository @Inject constructor(
     private val dao: TerameraDao,
 ) {
     fun groupDetail(groupId: String, selfId: String = "u_dev"): Flow<GroupDetail?> =
-        combine(dao.users(), dao.groups(), dao.memberships(), dao.expenses(), dao.shares()) {
-                users, groups, memberships, expenses, shares ->
+        combine(
+            dao.users(),
+            dao.groups(),
+            dao.membershipsForGroup(groupId),
+            dao.expensesForGroup(groupId),
+            dao.sharesForGroup(groupId),
+        ) { users, groups, members, expenses, shares ->
             val group = groups.firstOrNull { it.id == groupId } ?: return@combine null
             val usersById = users.associateBy { it.id }
-            val memberIds = memberships.filter { it.groupId == groupId }.map { it.userId }
-            val groupExpenses = expenses.filter { it.groupId == groupId }.sortedByDescending { it.createdAt }
+            val memberIds = members.map { it.userId }
             val sharesByExpense = shares.groupBy { it.expenseId }
 
-            val lines = groupExpenses.map { expense ->
+            val lines = expenses.map { expense ->
                 val expenseShares = sharesByExpense[expense.id].orEmpty()
                 ExpenseLine(
                     id = expense.id.toString(),
@@ -62,9 +71,9 @@ class GroupDetailRepository @Inject constructor(
                 )
             }
 
-            // net[m] = what m has overpaid (positive, is owed) or underpaid (negative, owes)
+            // net[m] = how much m has overpaid (positive, is owed) or underpaid (negative, owes)
             val net = memberIds.associateWith { 0L }.toMutableMap()
-            for (expense in groupExpenses) {
+            for (expense in expenses) {
                 net.merge(expense.paidByUserId, expense.amountMinor, Long::plus)
                 for (share in sharesByExpense[expense.id].orEmpty()) {
                     net.merge(share.userId, -share.amountMinor, Long::plus)
@@ -82,7 +91,7 @@ class GroupDetailRepository @Inject constructor(
                     initials(nameOf(id)) to (id == selfId)
                 },
                 memberIds = memberIds,
-                totalSpentMinor = groupExpenses.sumOf { it.amountMinor },
+                totalSpentMinor = expenses.sumOf { it.amountMinor },
                 expenses = lines,
                 simplifiedDebts = transfers,
                 worstCasePayments = worstCase,

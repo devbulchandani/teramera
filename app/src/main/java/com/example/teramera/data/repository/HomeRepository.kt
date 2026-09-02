@@ -36,12 +36,15 @@ internal data class LedgerSnapshot(
     val shares: List<ExpenseShareEntity>,
     val settlements: List<SettlementEntity> = emptyList(),
 ) {
-    fun toHomeData(selfId: String): HomeData {        // net[a] = how much a owes self (positive) or is owed by self (negative)
+    fun toHomeData(selfId: String): HomeData {
+        // net[a] = how much a owes self (positive) or is owed by self (negative)
         val friendNet = mutableMapOf<String, Long>()
         val groupNet = mutableMapOf<String, Long>()
 
+        // O(S+E) instead of O(S×E): one Map lookup per share instead of a list scan.
+        val expenseById = expenses.associateBy { it.id }
         for (share in shares) {
-            val expense = expenses.firstOrNull { it.id == share.expenseId } ?: continue
+            val expense = expenseById[share.expenseId] ?: continue
             when {
                 expense.paidByUserId == selfId && share.userId != selfId -> {
                     friendNet.merge(share.userId, share.amountMinor, Long::plus)
@@ -66,6 +69,8 @@ internal data class LedgerSnapshot(
         }
 
         val membersByGroup = memberships.groupBy({ it.groupId }, { it.userId })
+        // O(G+E) for the subtitle instead of O(G×E) — count once per group.
+        val expenseCountByGroup = expenses.groupBy { it.groupId }.mapValues { it.value.size }
 
         val friends = friendNet.mapNotNull { (userId, net) ->
             val user = usersById[userId] ?: return@mapNotNull null
@@ -84,7 +89,7 @@ internal data class LedgerSnapshot(
             if (selfId !in membersByGroup[group.id].orEmpty()) return@mapNotNull null
             val memberCount = membersByGroup[group.id]?.size ?: 0
             val net = groupNet[group.id] ?: 0L
-            val count = expenses.count { it.groupId == group.id }
+            val count = expenseCountByGroup[group.id] ?: 0
             BalanceEntry(
                 id = group.id,
                 name = group.name,

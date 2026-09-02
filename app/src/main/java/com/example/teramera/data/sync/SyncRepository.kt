@@ -65,9 +65,11 @@ class SyncRepository @Inject constructor(
                 )
             }
 
+            // Each replace happens inside a Room transaction so the downstream
+            // Flow observes exactly one emission instead of delete + insert,
+            // avoiding double-recompose on the home / activity screens.
             balancesDeferred.await()?.let { balances ->
-                dao.clearSyncedBalances()
-                dao.insertSyncedBalances(balances.map { dto ->
+                dao.replaceSyncedBalances(balances.map { dto ->
                     SyncedBalanceEntity(
                         userId = dto.userId, name = dto.name, netMinor = dto.netMinor,
                         upiId = dto.upiId.orEmpty(), updatedAt = now,
@@ -89,8 +91,7 @@ class SyncRepository @Inject constructor(
             }
 
             activityDeferred.await()?.let { activity ->
-                dao.clearSyncedActivity()
-                dao.insertSyncedActivity(activity.map { e ->
+                dao.replaceSyncedActivity(activity.map { e ->
                     SyncedActivityEntity(
                         id = e.id,
                         type = e.type,
