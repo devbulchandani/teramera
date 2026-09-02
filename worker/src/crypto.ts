@@ -1,6 +1,6 @@
 /**
  * Crypto + token helpers for the teramera Worker.
- * HS256 JWTs and PBKDF2 OTP hashes via WebCrypto.
+ * HS256 JWTs and SHA-256 refresh-token digests via WebCrypto.
  */
 
 const enc = new TextEncoder();
@@ -66,17 +66,4 @@ export async function issueRefreshToken(): Promise<{ token: string; hash: string
 export async function sha256Hex(value: string): Promise<string> {
     const digest = await crypto.subtle.digest("SHA-256", enc.encode(value));
     return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-// ---------- OTP hashing (PBKDF2, fixed pepper — codes are random + short-lived) ----------
-
-export async function hashOtp(code: string): Promise<string> {
-    const salt = enc.encode("teramera-otp-v1");
-    const base = await crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveBits"]);
-    const bits = await crypto.subtle.deriveBits(
-        { name: "PBKDF2", salt, iterations: 30_000, hash: "SHA-256" },
-        base,
-        256,
-    );
-    return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
-    hashOtp,
     issueRefreshToken,
     sha256Hex,
     signAccessToken,
@@ -9,13 +8,11 @@ import {
 } from "./crypto";
 import { computeSplit, simplifyDebts, SplitType } from "./split";
 import { sendMail } from "./mail";
-import { hashOtp as pbkdf2Hash } from "./crypto";
 
 interface Env {
     DB: D1Database;
     JWT_SECRET: string;
     GOOGLE_CLIENT_ID?: string;
-    EXPOSE_DEV_OTP?: string;
     RESEND_API_KEY?: string;
     INVITE_FROM_EMAIL?: string;
     APP_BASE_URL?: string;
@@ -37,10 +34,6 @@ const app = new Hono<AppEnv>();
 
 // ---------- constants ----------
 
-const OTP_TTL_MILLIS = 5 * 60 * 1000;
-const OTP_MAX_ATTEMPTS = 5;
-const OTP_WINDOW_MILLIS = 10 * 60 * 1000;
-const OTP_MAX_REQUESTS = 3;
 const ACCESS_TTL_MINUTES = 15;
 
 const METHODS = new Set(["UPI", "CASH", "BANK"]);
@@ -52,13 +45,6 @@ function jwtDeps(env: Env) {
         accessTtlMinutes: ACCESS_TTL_MINUTES,
         refreshTtlDays: 30,
     };
-}
-
-/** Cryptographically secure 6-digit code. */
-function generateOtp(): string {
-    const buf = new Uint32Array(1);
-    crypto.getRandomValues(buf);
-    return String(buf[0] % 1_000_000).padStart(6, "0");
 }
 
 type Row = Record<string, any>;
@@ -151,67 +137,10 @@ async function issueTokens(c: any, user: UserRow) {
 }
 
 // ---------- auth ----------
-
-app.post("/auth/otp/request", async (c) => {
-    const body = await c.req.json<{ phone: string }>().catch(() => null);
-    const phone = normalizePhone(body?.phone ?? "");
-    if (!phone) return jsonError(c, 400, "Phone must be in E.164 format, e.g. +919876543210");
-
-    const now = Date.now();
-    const recent = await rows<{ c: number }>(
-        c,
-        "SELECT COUNT(*) AS c FROM otp_requests WHERE phone = ? AND created_at > ?",
-        phone, now - OTP_WINDOW_MILLIS,
-    );
-    if (recent[0].c >= OTP_MAX_REQUESTS) {
-        return jsonError(c, 429, "Too many codes requested. Try again later.");
-    }
-    // invalidate previous unconsumed codes
-    await run(c, "UPDATE otp_requests SET consumed = 1 WHERE phone = ? AND consumed = 0", phone);
-
-    const code = generateOtp();
-    const requestId = crypto.randomUUID();
-    await run(
-        c,
-        "INSERT INTO otp_requests (id, phone, code_hash, expires_at, attempts, consumed, created_at) VALUES (?, ?, ?, ?, 0, 0, ?)",
-        requestId, phone, await hashOtp(code), now + OTP_TTL_MILLIS, now,
-    );
-
-    // SMS gateway integration point — codes surface via devCode until a provider is wired.
-    console.log(`[SMS to ${phone}] Your teramera code is ${code}`);
-
-    const response: Record<string, unknown> = { requestId, expiresInSeconds: 300 };
-    if (c.env.EXPOSE_DEV_OTP === "true") response.devCode = code;
-    return c.json(response);
-});
-
-app.post("/auth/otp/verify", async (c) => {
-    const body = await c.req.json<{ requestId: string; code: string }>();
-    if (!body?.requestId || !body?.code) return jsonError(c, 400, "requestId and code are required");
-
-    const now = Date.now();
-    const [row] = await rows<Row>(c, "SELECT * FROM otp_requests WHERE id = ?", body.requestId);
-    if (!row) return jsonError(c, 400, "Code request not found. Request a new code.");
-    if (row.consumed === 1) return jsonError(c, 400, "Code already used. Request a new one.");
-    if ((row.expires_at as number) < now) return jsonError(c, 400, "Code expired. Request a new one.");
-    if ((row.attempts as number) >= OTP_MAX_ATTEMPTS) {
-        return jsonError(c, 400, "Too many wrong attempts. Request a new code.");
-    }
-    if ((await hashOtp(body.code)) !== row.code_hash) {
-        await run(c, "UPDATE otp_requests SET attempts = ? WHERE id = ?", row.attempts + 1, body.requestId);
-        return jsonError(c, 400, "Incorrect code.");
-    }
-    await run(c, "UPDATE otp_requests SET consumed = 1 WHERE id = ?", body.requestId);
-
-    const phone = row.phone as string;
-    let users = await rows<UserRow>(c, "SELECT * FROM users WHERE phone = ?", phone);
-    if (users.length === 0) {
-        const id = crypto.randomUUID();
-        await run(c, "INSERT INTO users (id, phone, created_at) VALUES (?, ?, ?)", id, phone, now);
-        users = [{ id, phone, email: null, name: null, avatar_url: null }];
-    }
-    return c.json(await issueTokens(c, users[0]));
-});
+//
+// v0.3.4: Google Sign-In is the only way in. Phone OTP and email+password
+// auth were removed because (a) no SMS provider is wired (codes only logged),
+// and (b) Google gives us a verified email + avatar for free.
 
 app.post("/auth/google", async (c) => {
     const body = await c.req.json<{ idToken: string }>();
@@ -242,162 +171,7 @@ app.post("/auth/google", async (c) => {
     return c.json(await issueTokens(c, users[0]));
 });
 
-// ---------- email + password auth ----------
-
-function validEmail(email: string): boolean {
-    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
-}
-
-app.post("/auth/email/check", async (c) => {
-    const body = await c.req.json<{ email?: string }>();
-    const email = (body.email ?? "").trim().toLowerCase();
-    if (!validEmail(email)) return jsonError(c, 400, "Valid email required");
-    const [user] = await rows<Row>(c, "SELECT email_verified FROM users WHERE email = ?", email);
-    return c.json({ exists: !!user, verified: !!user && user.email_verified === 1 });
-});
-
-app.post("/auth/email/register", async (c) => {
-    const body = await c.req.json<{ email?: string; password?: string }>();
-    const email = (body.email ?? "").trim().toLowerCase();
-    const password = body.password ?? "";
-    if (!validEmail(email)) return jsonError(c, 400, "Valid email required");
-    if (password.length < 8) return jsonError(c, 400, "Password must be at least 8 characters");
-
-    let users = await rows<UserRow>(c, "SELECT * FROM users WHERE email = ?", email);
-    if (users.length > 0 && users[0].email_verified === 1) {
-        return jsonError(c, 400, "Account already exists — sign in instead");
-    }
-
-    const passwordHash = await pbkdf2Hash(password);
-    if (users.length === 0) {
-        const id = crypto.randomUUID();
-        await run(
-            c,
-            "INSERT INTO users (id, email, password_hash, email_verified, created_at) VALUES (?, ?, ?, 0, ?)",
-            id, email, passwordHash, Date.now(),
-        );
-        users = [{ id, phone: null, email, name: null, avatar_url: null }];
-    } else {
-        // unverified account re-registering: update their password
-        await run(c, "UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, users[0].id);
-    }
-
-    // email verification OTP — throttled like phone codes
-    const now = Date.now();
-    const recentReg = await rows<{ c: number }>(
-        c,
-        "SELECT COUNT(*) AS c FROM otp_requests WHERE phone = ? AND created_at > ?",
-        email, now - OTP_WINDOW_MILLIS,
-    );
-    if (recentReg[0].c >= OTP_MAX_REQUESTS) {
-        return jsonError(c, 429, "Too many codes requested. Try again later.");
-    }
-    await run(c, "UPDATE otp_requests SET consumed = 1 WHERE phone = ? AND consumed = 0", email);
-    const code = generateOtp();
-    const requestId = crypto.randomUUID();
-    await run(
-        c,
-        "INSERT INTO otp_requests (id, phone, code_hash, expires_at, attempts, consumed, created_at) VALUES (?, ?, ?, ?, 0, 0, ?)",
-        requestId, email, await hashOtp(code), now + OTP_TTL_MILLIS, now,
-    );
-    const status = await sendMail(
-        c.env, email,
-        "Your teramera verification code",
-        `<p>Your teramera code is <b style="font-size:24px;letter-spacing:4px">${code}</b>. It expires in 5 minutes.</p>`,
-        `Your teramera code is ${code}. It expires in 5 minutes.`,
-    );
-
-    // codes are NEVER returned to the client unless the operator explicitly
-    // opts in via EXPOSE_DEV_OTP — mail-send failure must not fail auth open
-    const response: Record<string, unknown> = { requestId };
-    if (status !== "sent" && c.env.EXPOSE_DEV_OTP !== "true") {
-        console.error(`mail delivery failed (${status}) for sign-in code`);
-    }
-    if (c.env.EXPOSE_DEV_OTP === "true") response.devCode = code;
-    return c.json(response);
-});
-
-app.post("/auth/email/login", async (c) => {
-    const body = await c.req.json<{ email?: string; password?: string }>();
-    const email = (body.email ?? "").trim().toLowerCase();
-    const [user] = await rows<Row>(
-        c,
-        "SELECT * FROM users WHERE email = ? AND password_hash IS NOT NULL",
-        email,
-    );
-    if (!user || (await pbkdf2Hash(body.password ?? "")) !== user.password_hash) {
-        return jsonError(c, 401, "Incorrect email or password");
-    }
-    if (user.email_verified !== 1) {
-        return c.json({ message: "Email not verified yet", code: "UNVERIFIED" }, 403);
-    }
-    return c.json(await issueTokens(c, user as UserRow));
-});
-
-/** Passwordless login OR re-verification via emailed code. */
-app.post("/auth/email/otp", async (c) => {
-    const body = await c.req.json<{ email?: string }>();
-    const email = (body.email ?? "").trim().toLowerCase();
-    if (!validEmail(email)) return jsonError(c, 400, "Valid email required");
-
-    const [user] = await rows<Row>(c, "SELECT * FROM users WHERE email = ?", email);
-    if (!user) return jsonError(c, 404, "No teramera account with that email");
-
-    const now = Date.now();
-    const recentOtp = await rows<{ c: number }>(
-        c,
-        "SELECT COUNT(*) AS c FROM otp_requests WHERE phone = ? AND created_at > ?",
-        email, now - OTP_WINDOW_MILLIS,
-    );
-    if (recentOtp[0].c >= OTP_MAX_REQUESTS) {
-        return jsonError(c, 429, "Too many codes requested. Try again later.");
-    }
-    await run(c, "UPDATE otp_requests SET consumed = 1 WHERE phone = ? AND consumed = 0", email);
-    const code = generateOtp();
-    const requestId = crypto.randomUUID();
-    await run(
-        c,
-        "INSERT INTO otp_requests (id, phone, code_hash, expires_at, attempts, consumed, created_at) VALUES (?, ?, ?, ?, 0, 0, ?)",
-        requestId, email, await hashOtp(code), now + OTP_TTL_MILLIS, now,
-    );
-    const status = await sendMail(
-        c.env, email,
-        "Your teramera sign-in code",
-        `<p>Your teramera code is <b style="font-size:24px;letter-spacing:4px">${code}</b>. It expires in 5 minutes.</p>`,
-        `Your teramera code is ${code}. It expires in 5 minutes.`,
-    );
-
-    // codes are NEVER returned to the client unless the operator explicitly
-    // opts in via EXPOSE_DEV_OTP — mail-send failure must not fail auth open
-    const response: Record<string, unknown> = { requestId };
-    if (status !== "sent" && c.env.EXPOSE_DEV_OTP !== "true") {
-        console.error(`mail delivery failed (${status}) for sign-in code`);
-    }
-    if (c.env.EXPOSE_DEV_OTP === "true") response.devCode = code;
-    return c.json(response);
-});
-
-app.post("/auth/email/verify", async (c) => {
-    const body = await c.req.json<{ requestId?: string; code?: string }>();
-    if (!body.requestId || !body.code) return jsonError(c, 400, "requestId and code are required");
-    const now = Date.now();
-    const [row] = await rows<Row>(c, "SELECT * FROM otp_requests WHERE id = ?", body.requestId);
-    if (!row || row.consumed === 1) return jsonError(c, 400, "Code already used. Request a new one.");
-    if ((row.expires_at as number) < now) return jsonError(c, 400, "Code expired. Request a new one.");
-    if ((row.attempts as number) >= OTP_MAX_ATTEMPTS) {
-        return jsonError(c, 400, "Too many wrong attempts. Request a new code.");
-    }
-    if ((await hashOtp(body.code)) !== row.code_hash) {
-        await run(c, "UPDATE otp_requests SET attempts = ? WHERE id = ?", row.attempts + 1, body.requestId);
-        return jsonError(c, 400, "Incorrect code.");
-    }
-    await run(c, "UPDATE otp_requests SET consumed = 1 WHERE id = ?", body.requestId);
-
-    const email = row.phone as string;
-    await run(c, "UPDATE users SET email_verified = 1 WHERE email = ?", email);
-    const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE email = ?", email);
-    return c.json(await issueTokens(c, user));
-});
+// ---------- refresh / logout ----------
 
 app.post("/auth/refresh", async (c) => {
     const body = await c.req.json<{ refreshToken: string }>();
@@ -509,20 +283,14 @@ app.post("/groups", async (c) => {
     return c.json({ id, name: body.name.trim(), currency: body.currency ?? "INR" });
 });
 
-/** Find a teramera user by phone — how friends discover each other. */
+/** Find a teramera user by email — how friends discover each other. */
 app.get("/users/find", async (c) => {
-    const phone = c.req.query("phone");
-    const email = c.req.query("email");
-    let user: UserRow | undefined;
-    if (email) {
-        [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE email = ?", email.trim().toLowerCase());
-        if (!user) return jsonError(c, 404, "No teramera user with that email yet");
-    } else {
-        const normalized = normalizePhone(phone ?? "");
-        if (!normalized) return jsonError(c, 400, "Provide a valid +E.164 phone or an email");
-        [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE phone = ?", normalized);
-        if (!user) return jsonError(c, 404, "No teramera user with that number yet");
+    const email = (c.req.query("email") ?? "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        return jsonError(c, 400, "Provide a valid email");
     }
+    const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE email = ?", email);
+    if (!user) return jsonError(c, 404, "No teramera user with that email yet");
     return c.json({
         id: user.id,
         name: user.name ?? "",
@@ -1112,6 +880,32 @@ app.post("/settlements", async (c) => {
         crypto.randomUUID(), body.groupId ?? null, payer, body.paidToUserId,
         body.amountMinor, body.method.toUpperCase(), Date.now(),
     );
+
+    // Notify the *other* side of the payment (receiver when payer paid, payer when
+    // receiver recorded a payment they made). Best-effort, never throws.
+    const receiver = payer === userId ? body.paidToUserId : payer;
+    if (
+        receiver &&
+        c.env.FCM_PROJECT_ID &&
+        c.env.FCM_CLIENT_EMAIL &&
+        c.env.FCM_PRIVATE_KEY
+    ) {
+        c.executionCtx.waitUntil((async () => {
+            const [payerUser] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", payer);
+            let groupName: string | null = null;
+            if (body.groupId) {
+                const [g] = await rows<{ name: string }>(c, "SELECT name FROM groups WHERE id = ?", body.groupId);
+                groupName = g?.name ?? null;
+            }
+            const rupees = (body.amountMinor ?? 0) / 100;
+            await pushToUsers(
+                c,
+                [receiver],
+                `${payerUser?.name ?? "Someone"} settled up`,
+                `₹${rupees.toFixed(0)}${groupName ? ` · ${groupName}` : ""} · ${body.method!.toUpperCase()}`,
+            );
+        })());
+    }
     return c.json({ status: "recorded", amountMinor: body.amountMinor });
 });
 
@@ -1366,13 +1160,6 @@ async function pushToUsers(c: any, userIds: string[], title: string, bodyText: s
     } catch (e) {
         console.error("push failed", e);
     }
-}
-
-function normalizePhone(raw: string): string | null {
-    let cleaned = raw.replace(/[\s()\-]/g, "");
-    if (!cleaned.startsWith("+")) return null;
-    cleaned = "+" + cleaned.slice(1).replace(/\D/g, "");
-    return /^\+\d{8,15}$/.test(cleaned) ? cleaned : null;
 }
 
 function jsonError(c: any, status: any, message: string) {
