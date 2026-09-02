@@ -87,7 +87,11 @@ fun SettleScreen(
             upiLauncher.launch(intent)
         } catch (_: Exception) {
             launchedDraft = null
-            android.widget.Toast.makeText(context, "No UPI app found — recording without payment", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(
+                context,
+                "No UPI app found on this device — recording without launching payment",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
             viewModel.save {}
         }
     }
@@ -96,9 +100,31 @@ fun SettleScreen(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { pendingUpiConfirm = null },
             shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-            title = { Text("Payment done?") },
+            icon = {
+                // Small visual hint that the money has already moved in the UPI app.
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(MaterialTheme.colorScheme.tertiaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("✓", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.tertiary)
+                }
+            },
+            title = { Text("Did the payment go through?") },
             text = {
-                Text("Did you complete ₹${formatInr(confirmDraft.amountMinor)} to ${confirmDraft.person.name} in your UPI app?")
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "You opened ${confirmDraft.person.name}'s UPI app for ₹${formatInr(confirmDraft.amountMinor)}, " +
+                            "but most UPI apps don't tell teramera whether the payment succeeded.",
+                    )
+                    Text(
+                        "Only tap 'Yes, record it' if money actually moved. If the app crashed or you backed out, tap 'No, cancel'.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
@@ -160,10 +186,14 @@ fun SettleScreen(
     }
 
     state.draft?.let { draft ->
+        val upiWillLaunch = draft.method == PaymentMethod.UPI &&
+            !draft.person.upiId.isNullOrBlank() &&
+            draft.person.amountMinor < 0
         SettleSheet(
             draft = draft,
             saving = state.saving,
             saved = state.saved,
+            upiWillLaunch = upiWillLaunch,
             onFull = viewModel::setFull,
             onHalf = viewModel::setHalf,
             onStartCustom = viewModel::startCustom,
@@ -211,6 +241,7 @@ private fun SettleSheet(
     draft: SettleDraft,
     saving: Boolean,
     saved: Boolean,
+    upiWillLaunch: Boolean,
     onFull: () -> Unit,
     onHalf: () -> Unit,
     onStartCustom: () -> Unit,
@@ -265,7 +296,11 @@ private fun SettleSheet(
                         .padding(vertical = 16.dp)
                         .height(56.dp),
                 ) {
-                    Text("Record payment · ₹${formatInr(draft.amountMinor)}", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        if (upiWillLaunch) "Open UPI app & pay · ₹${formatInr(draft.amountMinor)}"
+                        else "Record payment · ₹${formatInr(draft.amountMinor)}",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                 }
             } else {
                 DoneStage(draft = draft, onDone = onDismiss)
