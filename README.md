@@ -112,6 +112,17 @@ then open `http://localhost:8289/opendesign/`.
 - Email invites still log to console when no SMTP/Resend key is configured; they reach mail when it is
 - Offline-created expenses stay local until a future sync pass
 
+## Releases
+
+Bump `versionCode`/`versionName` in `app/build.gradle.kts` and `worker/wrangler.jsonc`,
+commit, then `git tag v0.X.Y && git push --tags`. The `.github/workflows/release.yml`
+workflow builds the APK, copies it into `worker/public/teramera.apk`, deploys the
+Worker (if `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets are configured),
+and creates the GitHub release with `teramera.apk` + `app-debug.apk` assets.
+
+Existing installs detect the new build via the Worker's `/app/version` endpoint
+on the next launch and prompt for in-app update.
+
 ## License
 
 All rights reserved. Private project.

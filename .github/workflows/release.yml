@@ -1,0 +1,152 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.3.5). Leave empty to release whatever was just pushed.'
+        required: false
+
+permissions:
+  contents: write   # to push the updated worker/public/teramera.apk
+  packages: read
+
+jobs:
+  release:
+    runs-on: macos-latest    # matches the dev machine; AGP 9 + JDK 17 + Android SDK 37
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Resolving ${{ steps.tag.outputs.name }}"
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK (compileSdk 37)
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 37
+          build-tools-version: '36.0.0'
+
+      # Caches ~/.gradle between runs; saves ~1-2 min on subsequent releases.
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'app/build.gradle.kts', 'worker/wrangler.jsonc') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # Wrapper expects local.properties; we don't need real values for `assembleDebug`,
+      # but the file must exist because Google Sign-In keys are wired through it.
+      - name: Stub local.properties
+        run: |
+          mkdir -p ~/.android
+          cat > local.properties <<EOF
+          sdk.dir=$ANDROID_SDK_ROOT
+          google.webClientId=${{ vars.GOOGLE_WEB_CLIENT_ID || '' }}
+          EOF
+          echo "local.properties written"
+
+      - name: Sanity — versionCode must have changed since the previous tag
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          CURRENT_VC=$(grep -E '^\s*versionCode\s*=' app/build.gradle.kts | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/')
+          echo "Current versionCode=${CURRENT_VC}"
+
+          # Sort existing release tags and pick the most recent v* tag (excluding ours).
+          PREV_TAG=$(gh release list --limit 50 --json tagName -q '.[].tagName' \
+            | grep -E '^v[0-9]' | grep -v "^${{ steps.tag.outputs.name }}$" | head -1 || true)
+          echo "Previous release tag: ${PREV_TAG:-none}"
+
+          if [ -z "${PREV_TAG}" ]; then
+            echo "First release — nothing to compare against."
+            exit 0
+          fi
+
+          PREV_VC=$(git show "${PREV_TAG}:app/build.gradle.kts" 2>/dev/null \
+            | grep -E '^\s*versionCode\s*=' \
+            | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/' \
+            | head -1)
+          PREV_VC=${PREV_VC:-0}
+          echo "Previous versionCode=${PREV_VC}"
+
+          if [ "${CURRENT_VC}" -le "${PREV_VC}" ]; then
+            echo "::error::versionCode ${CURRENT_VC} is not greater than previous tag ${PREV_TAG}'s ${PREV_VC}. Bump it in app/build.gradle.kts."
+            exit 1
+          fi
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --console=plain --no-daemon
+
+      - name: Ship APK into worker assets
+        run: |
+          mkdir -p worker/public
+          cp app/build/outputs/apk/debug/app-debug.apk worker/public/teramera.apk
+          ls -la worker/public/teramera.apk
+
+      - name: Deploy Worker
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets missing — skipping wrangler deploy. Asset uploaded via gh release below."
+            exit 0
+          fi
+          npx --yes wrangler deploy
+
+      - name: Commit updated worker APK
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet worker/public/teramera.apk; then
+            echo "worker/public/teramera.apk unchanged; nothing to commit"
+          else
+            git add worker/public/teramera.apk
+            git commit -m "release: ship ${{ steps.tag.outputs.name }} APK to worker/public"
+            git push origin HEAD:main
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES=$(cat <<EOF
+          v${{ steps.tag.outputs.name }} — auto-built release.
+
+          Built on macos-latest, deployed via wrangler (if secrets are configured).
+          The Worker serves \`/teramera.apk\` from this build; existing apps detect it via \`/app/version\`.
+          EOF
+          )
+          # Upload under both names: the worker-served `teramera.apk` and the
+          # raw `app-debug.apk` for anyone who wants the original artifact.
+          gh release create "${{ steps.tag.outputs.name }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${{ steps.tag.outputs.name }}" \
+            --notes "${NOTES}" \
+            worker/public/teramera.apk#teramera.apk \
+            app/build/outputs/apk/debug/app-debug.apk#app-debug.apk
