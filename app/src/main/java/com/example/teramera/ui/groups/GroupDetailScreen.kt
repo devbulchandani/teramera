@@ -446,7 +446,7 @@ private fun AddMemberDialog(
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
-                    label = { Text("Phone (+91…) or email") },
+                    label = { Text("Friend's email") },
                     singleLine = true,
                     enabled = state.found == null,
                 )
@@ -509,7 +509,7 @@ private fun AddMemberDialog(
             if (state.found == null) {
                 androidx.compose.material3.TextButton(
                     onClick = { onFind(phone.trim()) },
-                    enabled = !state.searching && phone.trim().length >= 5,
+                    enabled = !state.searching && phone.trim().contains("@"),
                 ) {
                     Text(if (state.searching) "Searching…" else "Find")
                 }

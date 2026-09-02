@@ -1,8 +1,7 @@
 package com.example.teramera.core.auth
 
 import com.example.teramera.core.network.AuthTokens
-import com.example.teramera.core.network.OtpRequestDto
-import com.example.teramera.core.network.OtpVerifyRequestDto
+import com.example.teramera.core.network.GoogleLoginRequestDto
 import com.example.teramera.core.network.TokenStore
 import com.example.teramera.core.network.AuthApi
 import kotlinx.coroutines.flow.Flow
@@ -20,21 +19,9 @@ class AuthRepository @Inject constructor(
     /** null while the session state is being restored, true/false once known. */
     val isLoggedIn: Flow<Boolean?> = tokenStore.tokens.map { it != null }
 
-    data class OtpChallenge(val requestId: String, val devCode: String?)
-
-    suspend fun requestOtp(phoneE164: String): Result<OtpChallenge> = runCatching {
-        val response = authApi.requestOtp(OtpRequestDto(phoneE164))
-        OtpChallenge(response.requestId, response.devCode)
-    }
-
-    suspend fun verifyOtp(requestId: String, code: String): Result<Unit> = runCatching {
-        val tokens = authApi.verifyOtp(OtpVerifyRequestDto(requestId, code))
-        tokenStore.save(AuthTokens(tokens.accessToken, tokens.refreshToken, tokens.userId))
-    }
-
     suspend fun googleLogin(idToken: String): Result<Unit> =
         try {
-            val tokens = authApi.googleLogin(com.example.teramera.core.network.GoogleLoginRequestDto(idToken))
+            val tokens = authApi.googleLogin(GoogleLoginRequestDto(idToken))
             tokenStore.save(AuthTokens(tokens.accessToken, tokens.refreshToken, tokens.userId))
             Result.success(Unit)
         } catch (e: retrofit2.HttpException) {

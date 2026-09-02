@@ -6,7 +6,7 @@ teramera is an expense-splitting app for friends — create groups, add expenses
 
 - **Android app**: Kotlin + Jetpack Compose (Material 3), offline-first with Room
 - **Backend**: Cloudflare Worker (TypeScript/Hono) + Cloudflare D1 database
-- **Auth**: Google Sign-In (primary) or email + password with emailed verification codes
+- **Auth**: Google Sign-In only (v0.3.4)
 
 ## Repository layout
 
@@ -20,9 +20,9 @@ opendesign/ Design system + hi-fi mockups (opendesign plugin)
 
 ## Features
 
-- Google Sign-In or email/password (with emailed 6-digit verification codes)
+- Google Sign-In (only way in — v0.3.4 dropped phone OTP and email/password)
 - Groups with invite links (deep link joins after sign-in; landing page offers the APK)
-- Add members by phone number or email (email invites via SMTP — Gmail app password works, no domain needed)
+- Add members by email (email invites via SMTP — Gmail app password works, no domain needed)
 - Expenses split **equal / exact / percent / shares**
 - **Multiple payers** per expense, each with their own amount
 - **Per-expense participants** — exclude anyone from a specific expense
@@ -82,14 +82,16 @@ cd backend && mvn test               # Spring Boot reference tests
 | Endpoint | Description |
 |---|---|
 | `POST /auth/google` | Sign in with a Google ID token |
-| `POST /auth/email/register` · `/login` · `/otp` · `/verify` | Email + password auth with emailed codes |
+| `POST /auth/refresh` | Rotate access token via refresh token |
+| `POST /auth/logout` | Revoke a refresh token |
 | `GET /me` · `PATCH /me` | Profile |
 | `GET/POST /groups` · `GET /groups/:id/detail` | Groups with balances & simplified debts |
 | `POST /expenses` | Create expense — `payments[]` for multi-payer, `participantIds[]` for per-expense members |
-| `POST /settlements` | Record a payment (either direction) |
+| `POST /settlements` | Record a payment (either direction) — notifies the counterparty via FCM |
 | `GET /balances` | Friend-level nets for the home screen |
-| `GET /users/find?phone= or ?email=` | Find a user to add |
+| `GET /users/find?email=` | Find a user to add by email |
 | `POST /groups/:id/members` · `/join` · `/invite-email` | Membership & invites |
+| `POST/DELETE /devices` | FCM device-token registration |
 | `GET /app/version` · `GET /teramera.apk` | In-app update check & APK download |
 | `GET /invite/:groupId` | Invite landing page (deep link + APK fallback) |
 
@@ -105,10 +107,9 @@ then open `http://localhost:8289/opendesign/`.
 
 ## Status & notes
 
-- v0.2.1 — core loop complete and multi-device synced
-- OTP/email-code rate limit: 3 per 10 min per identifier
-- `EXPOSE_DEV_OTP=true` returns codes in API responses — **must be `false` in production**
-- SMS codes log to the Worker console (no SMS provider wired yet); email codes send via SMTP/Resend
+- v0.3.4 — Google-only auth, FCM push on settlements, speed pass
+- `EXPOSE_DEV_OTP` removed (no OTP paths remain)
+- Email invites still log to console when no SMTP/Resend key is configured; they reach mail when it is
 - Offline-created expenses stay local until a future sync pass
 
 ## License

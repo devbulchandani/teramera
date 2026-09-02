@@ -142,9 +142,6 @@ interface LedgerApi {
     suspend fun createSettlement(@Body body: CreateSettlementRequestDto): Map<String, String>
 
     @GET("users/find")
-    suspend fun findUser(@Query("phone") phone: String): FoundUserDto
-
-    @GET("users/find")
     suspend fun findUserByEmail(@Query("email") email: String): FoundUserDto
 
     @POST("groups/{groupId}/members")

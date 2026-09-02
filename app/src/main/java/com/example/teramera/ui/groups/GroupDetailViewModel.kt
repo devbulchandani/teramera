@@ -136,15 +136,15 @@ class GroupDetailViewModel @Inject constructor(
     fun findFriend(query: String) {
         viewModelScope.launch {
             addMember.value = addMember.value.copy(searching = true, error = null, found = null)
-            lastQuery = query.trim()
+            val trimmed = query.trim()
+            if (trimmed.isEmpty()) return@launch
             try {
-                val found = if (query.contains("@")) ledgerApi.findUserByEmail(query.trim())
-                else ledgerApi.findUser(query.trim())
+                // v0.3.4: phone lookup was removed; only email-based friend add is supported.
+                val found = ledgerApi.findUserByEmail(trimmed)
                 addMember.value = AddMemberState(visible = true, found = found)
             } catch (e: retrofit2.HttpException) {
                 val message = when {
-                    e.code() == 404 && query.contains("@") -> "No teramera user with that email yet"
-                    e.code() == 404 -> "No teramera user with that number yet"
+                    e.code() == 404 -> "No teramera user with that email yet"
                     else -> e.message()
                 }
                 addMember.value = AddMemberState(visible = true, error = message)
