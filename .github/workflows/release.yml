@@ -123,7 +123,12 @@ jobs:
             echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets missing — skipping wrangler deploy. Asset uploaded via gh release below."
             exit 0
           fi
-          npx --yes wrangler deploy
+          # best-effort: a stale OAuth token will fail with 'Authentication
+          # error [code: 10000]'. Warn and continue so the release + APK ship
+          # still succeed; re-deploy manually after refreshing the token.
+          if ! npx --yes wrangler deploy; then
+            echo "::warning::wrangler deploy failed (likely an expired OAuth token). Re-run after refreshing CLOUDFLARE_API_TOKEN."
+          fi
 
       - name: Commit updated worker APK
         run: |
