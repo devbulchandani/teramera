@@ -131,14 +131,21 @@ jobs:
           fi
 
       - name: Commit updated worker APK
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git diff --quiet worker/public/teramera.apk; then
             echo "worker/public/teramera.apk unchanged; nothing to commit"
           else
+            # workflow checked out the tag as a detached HEAD; fast-forward main
+            # to that commit and push the APK update on top.
             git add worker/public/teramera.apk
             git commit -m "release: ship ${{ steps.tag.outputs.name }} APK to worker/public"
+            git fetch origin main
+            # rebase the APK commit onto the current tip of main so the push is fast-forward
+            HEAD_SHA=$(git rev-parse HEAD)
+            git rebase origin/main
             git push origin HEAD:main
           fi
 
