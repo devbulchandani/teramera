@@ -39,11 +39,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # `api-level` / `build-tools-version` are not inputs of this action (it warned
+      # and ignored them); `packages` is. Asking for the retired `tools` package made
+      # sdkmanager exit 1 and failed the v0.3.9 run, so install only what the hosted
+      # image doesn't already ship.
       - name: Setup Android SDK (compileSdk 37)
         uses: android-actions/setup-android@v3
         with:
-          api-level: 37
-          build-tools-version: '36.0.0'
+          packages: 'platform-tools'
 
       # Caches ~/.gradle between runs; saves ~1-2 min on subsequent releases.
       - name: Gradle cache
