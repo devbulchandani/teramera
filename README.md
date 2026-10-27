@@ -108,6 +108,8 @@ types, edits, settlements, activity, validation) and stops the server again. Pas
 | `GET /users/find?email=` | Find a user to add by email |
 | `POST /groups/:id/members` · `/join` · `/invite-email` | Membership & invites |
 | `POST/DELETE /devices` | FCM device-token registration |
+| `GET /` | Public download page (version + APK link) |
+| `GET /health` | Unauthenticated JSON health probe |
 | `GET /app/version` · `GET /teramera.apk` | In-app update check & APK download |
 | `GET /invite/:groupId` | Invite landing page (deep link + APK fallback) |
 
