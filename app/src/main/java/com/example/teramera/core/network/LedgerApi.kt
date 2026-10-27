@@ -76,8 +76,10 @@ data class UpdateExpenseRequestDto(
 )
 data class GroupExpenseDto(
     val id: String,
+    val parentId: String? = null,
     val title: String,
     val paidByUserId: String,
+    val payerCount: Int = 1,
     val amountMinor: Long,
     val myShareMinor: Long,
     val participantCount: Int,
@@ -101,6 +103,7 @@ data class GroupDetailDto(
     val expenses: List<GroupExpenseDto>,
     val balances: List<BalanceDto>,
     val simplifiedDebts: List<DebtDto>,
+    val worstCasePayments: Int = 0,
 )
 
 interface LedgerApi {

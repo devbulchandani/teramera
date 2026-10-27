@@ -3,6 +3,8 @@ package com.example.teramera.data.repository
 import com.example.teramera.data.local.ExpenseEntity
 import com.example.teramera.data.local.ExpenseShareEntity
 import com.example.teramera.data.local.TerameraDao
+import java.math.BigInteger
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,16 +26,22 @@ sealed interface SplitResult {
 class ExpensesRepository @Inject constructor(
     private val dao: TerameraDao,
 ) {
+    /**
+     * Saves an expense, splitting the payment across [payments] when several
+     * people fronted the money. Each payer becomes its own row (sharing a
+     * `parentId`) with their slice of every share, so balances stay exact.
+     */
     suspend fun saveExpense(
         groupId: String?,
         paidByUserId: String,
         title: String,
         input: SplitInput,
+        payments: Map<String, Long> = emptyMap(),
         createdAt: Long = System.currentTimeMillis(),
     ): Result<Unit> {
         if (title.isBlank()) return Result.failure(IllegalArgumentException("Title is required"))
         if (input.totalMinor <= 0) return Result.failure(IllegalArgumentException("Amount must be greater than zero"))
-        if (input.participants.isEmpty()) return Result.failure(IllegalArgumentException("Pick at least one person"))
+        if (input.participants.size < 2) return Result.failure(IllegalArgumentException("Pick at least two people"))
 
         val split = computeSplit(input)
         val shares = when (split) {
@@ -41,19 +49,36 @@ class ExpensesRepository @Inject constructor(
             is SplitResult.Invalid -> return Result.failure(IllegalArgumentException(split.reason))
         }
 
-        val expenseId = dao.insertExpenses(
-            listOf(
-                ExpenseEntity(
-                    groupId = groupId,
-                    paidByUserId = paidByUserId,
-                    title = title.trim(),
-                    amountMinor = shares.sumOf { it.second },
-                    createdAt = createdAt,
+        val payers = payments.filterValues { it > 0 }.ifEmpty { mapOf(paidByUserId to input.totalMinor) }
+        val paidTotal = payers.values.sum()
+        if (paidTotal != input.totalMinor) {
+            return Result.failure(
+                IllegalArgumentException(
+                    "Payer amounts add up to ₹${paiseToRupeeString(paidTotal)}, " +
+                        "not ₹${paiseToRupeeString(input.totalMinor)}"
                 )
             )
-        ).first()
+        }
 
-        dao.insertShares(shares.map { ExpenseShareEntity(expenseId, it.first, it.second) })
+        val shareWeights = shares.toMap()
+        val parentId = if (payers.size > 1) UUID.randomUUID().toString() else null
+        for ((payerId, payerAmount) in payers) {
+            val allocation = if (payers.size == 1) shareWeights
+            else allocateProRata(shareWeights, payerAmount, input.totalMinor)
+            val expenseId = dao.insertExpenses(
+                listOf(
+                    ExpenseEntity(
+                        groupId = groupId,
+                        paidByUserId = payerId,
+                        title = title.trim(),
+                        amountMinor = payerAmount,
+                        createdAt = createdAt,
+                        parentId = parentId,
+                    )
+                )
+            ).first()
+            dao.insertShares(allocation.map { (userId, minor) -> ExpenseShareEntity(expenseId, userId, minor) })
+        }
         return Result.success(Unit)
     }
 
@@ -109,6 +134,36 @@ class ExpensesRepository @Inject constructor(
                 val extra = if (remainder > 0) { remainder--; 1L } else 0L
                 person to amount + extra
             }
+        }
+
+        /**
+         * Splits [bucket] across [weights] proportionally; leftover paise go to the
+         * largest fractional remainders so the parts always sum to [bucket].
+         */
+        internal fun allocateProRata(
+            weights: Map<String, Long>,
+            bucket: Long,
+            totalWeight: Long,
+        ): Map<String, Long> {
+            if (weights.isEmpty() || totalWeight <= 0 || bucket <= 0) return emptyMap()
+            val total = BigInteger.valueOf(totalWeight)
+            val result = mutableMapOf<String, Long>()
+            val remainders = mutableMapOf<String, BigInteger>()
+            var allocated = 0L
+            for ((id, weight) in weights) {
+                val product = BigInteger.valueOf(bucket) * BigInteger.valueOf(weight.coerceAtLeast(0))
+                val part = product / total
+                result[id] = part.toLong()
+                remainders[id] = product % total
+                allocated += part.toLong()
+            }
+            var leftover = bucket - allocated
+            for ((id, _) in remainders.entries.sortedByDescending { it.value }) {
+                if (leftover <= 0) break
+                result[id] = (result[id] ?: 0L) + 1
+                leftover--
+            }
+            return result
         }
 
         private fun ok(shares: List<Pair<String, Long>>) =

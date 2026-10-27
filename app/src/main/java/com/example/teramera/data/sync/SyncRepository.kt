@@ -57,6 +57,8 @@ class SyncRepository @Inject constructor(
             val activityDeferred = async { runCatching { ledgerApi.activity() }.getOrNull() }
 
             meDeferred.await()?.let { me ->
+                // the previous account's "me" row must not survive a sign-in switch
+                dao.clearSelfUsers()
                 dao.insertUser(
                     com.example.teramera.data.local.UserEntity(
                         id = me.id, name = me.name ?: "You", isSelf = true,
@@ -78,7 +80,8 @@ class SyncRepository @Inject constructor(
             }
 
             groupsDeferred.await()?.let { groups ->
-                dao.insertSyncedGroups(groups.map { dto ->
+                // replace, not upsert — groups you left must disappear
+                dao.replaceSyncedGroups(groups.map { dto ->
                     SyncedGroupEntity(
                         id = dto.id,
                         name = dto.name,

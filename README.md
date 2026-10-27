@@ -85,7 +85,13 @@ API runs at `https://teramera-api.<your-subdomain>.workers.dev`.
 ```bash
 ./gradlew :app:testDebugUnitTest     # Android: split engine, balances, simplifier, auth
 cd backend && mvn test               # Spring Boot reference tests
+cd worker && python3 smoke.py        # API end-to-end on a throwaway local D1
 ```
+
+`smoke.py` wipes `worker/.wrangler/state`, applies `schema.sql`, seeds a few users,
+starts `wrangler dev` on :8787, exercises every endpoint (multi-payer, all four split
+types, edits, settlements, activity, validation) and stops the server again. Pass
+`--reuse` to point it at a server you already have running.
 
 ## API overview
 
@@ -120,7 +126,7 @@ then open `http://localhost:8289/opendesign/`.
 - v0.3.4 — Google-only auth, FCM push on settlements, speed pass
 - `EXPOSE_DEV_OTP` removed (no OTP paths remain)
 - Email invites still log to console when no SMTP/Resend key is configured; they reach mail when it is
-- Offline-created expenses stay local until a future sync pass
+- Offline-created expenses stay local until a future sync pass; they support multi-payer and all four split types
 
 ## Releases
 

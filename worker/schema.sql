@@ -82,4 +82,7 @@ CREATE TABLE IF NOT EXISTS device_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_requests(phone, created_at);
 CREATE INDEX IF NOT EXISTS idx_expenses_group ON expenses(group_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_expenses_parent ON expenses(parent_id);
 CREATE INDEX IF NOT EXISTS idx_shares_expense ON expense_shares(expense_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
+CREATE INDEX IF NOT EXISTS idx_settlements_group ON settlements(group_id, created_at);

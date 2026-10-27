@@ -242,7 +242,11 @@ private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
         floatingActionButton = {
             if (currentRoute == Routes.HOME) {
                 ExtendedFloatingActionButton(
-                    onClick = { showAddExpense = true },
+                    onClick = {
+                        // a group picked by an earlier group-screen add must not leak in
+                        addExpenseGroupId = null
+                        showAddExpense = true
+                    },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),

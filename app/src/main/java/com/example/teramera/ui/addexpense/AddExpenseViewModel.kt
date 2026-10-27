@@ -2,12 +2,14 @@ package com.example.teramera.ui.addexpense
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.teramera.core.network.CreateExpenseRequestDto
+import com.example.teramera.core.network.LedgerApi
+import com.example.teramera.core.network.MemberDto
+import com.example.teramera.core.network.PaymentDto
 import com.example.teramera.core.network.TokenStore
-import com.example.teramera.data.local.ExpenseEntity
 import com.example.teramera.data.local.GroupEntity
-import com.example.teramera.data.local.MembershipEntity
-import com.example.teramera.data.local.UserEntity
 import com.example.teramera.data.local.TerameraDao
+import com.example.teramera.data.local.UserEntity
 import com.example.teramera.data.repository.ExpensesRepository
 import com.example.teramera.data.repository.SplitInput
 import com.example.teramera.data.repository.SplitResult
@@ -23,6 +25,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** "1234.56" → 123456 paise. */
+internal fun parseAmountMinor(text: String): Long {
+    val clean = text.ifEmpty { "0" }
+    val parts = clean.split(".")
+    val rupees = parts[0].toLongOrNull() ?: 0L
+    val paise = when (parts.getOrNull(1)) {
+        null -> 0L
+        else -> parts[1].padEnd(2, '0').take(2).toLongOrNull() ?: 0L
+    }
+    return rupees * 100 + paise
+}
+
 data class AddDraft(
     val step: Int = 1, // 1 amount · 2 details · 3 participants
     val amountText: String = "",
@@ -32,23 +46,21 @@ data class AddDraft(
     val splitType: SplitType = SplitType.EQUAL,
     val included: Set<String> = emptySet(),
     val rawValues: Map<String, Long> = emptyMap(),
-    // server mode: selected payers (userId → amount); single payer defaults to full amount
+    // server mode: selected payers (userId → amount); empty = the current user paid all
     val payers: Map<String, Long> = emptyMap(),
     val payerMode: Boolean = false,
     val includedServer: Set<String> = emptySet(),
 ) {
-    val amountMinor: Long
-        get() = run {
-            val clean = amountText.ifEmpty { "0" }
-            val parts = clean.split(".")
-            val rupees = parts[0].toLongOrNull() ?: 0L
-            val paise = when (parts.getOrNull(1)) {
-                null -> 0L
-                else -> (parts[1].padEnd(2, '0').take(2)).toLongOrNull() ?: 0L
-            }
-            rupees * 100 + paise
-        }
+    val amountMinor: Long get() = parseAmountMinor(amountText)
 }
+
+/** "Add a friend by email" — how a group-less split reaches someone you're square with. */
+data class FriendSearchState(
+    val query: String = "",
+    val searching: Boolean = false,
+    val error: String? = null,
+    val found: List<MemberDto> = emptyList(),
+)
 
 data class AddExpenseUiState(
     val draft: AddDraft = AddDraft(),
@@ -59,18 +71,43 @@ data class AddExpenseUiState(
     val saving: Boolean = false,
     val error: String? = null,
     val serverMode: Boolean = false,
-    val serverMembers: List<com.example.teramera.core.network.MemberDto> = emptyList(),
+    /** Members of the selected group (empty outside a group). */
+    val serverMembers: List<MemberDto> = emptyList(),
+    /** People you already share balances with (plus anyone found by email). */
+    val serverFriends: List<MemberDto> = emptyList(),
     val selfServerId: String? = null,
     val membersLoading: Boolean = false,
     val membersError: String? = null,
-)
+    val friendSearch: FriendSearchState = FriendSearchState(),
+) {
+    /** The signed-in user id, or the local device profile's id when offline. */
+    val selfId: String
+        get() = selfServerId ?: self?.id ?: AddExpenseViewModel.SELF
+
+    /** Selected payers; empty means "you paid it all". */
+    val payerIds: Set<String>
+        get() = draft.payers.keys.ifEmpty { setOf(selfId) }
+
+    /** Everyone available for the active server-mode split. */
+    val serverPeople: List<MemberDto>
+        get() = if (draft.groupId != null) {
+            serverMembers
+        } else {
+            val selfMember = selfServerId?.let { id ->
+                MemberDto(id = id, name = self?.name?.ifBlank { "You" } ?: "You", isSelf = true)
+            }
+            (listOfNotNull(selfMember) + serverFriends).distinctBy { it.id }
+        }
+}
 
 private data class SaveState(val saving: Boolean = false, val error: String? = null)
 private data class MemberLoad(val loading: Boolean = false, val error: String? = null)
 private data class ServerState(
     val loggedIn: Boolean = false,
     val syncedGroups: List<GroupEntity> = emptyList(),
+    val friends: List<MemberDto> = emptyList(),
     val selfId: String? = null,
+    val friendSearch: FriendSearchState = FriendSearchState(),
 )
 
 @HiltViewModel
@@ -79,39 +116,50 @@ class AddExpenseViewModel @Inject constructor(
     private val expensesRepository: ExpensesRepository,
     private val syncRepository: SyncRepository,
     private val tokenStore: TokenStore,
-    private val ledgerApi: com.example.teramera.core.network.LedgerApi,
+    private val ledgerApi: LedgerApi,
 ) : ViewModel() {
 
-    private val serverMembers = MutableStateFlow<List<com.example.teramera.core.network.MemberDto>>(emptyList())
+    private val serverMembers = MutableStateFlow<List<MemberDto>>(emptyList())
 
     private val SELF_ID = "u_dev"
     private val draft = MutableStateFlow(AddDraft())
     private val saveState = MutableStateFlow(SaveState())
     private val memberLoad = MutableStateFlow(MemberLoad())
+    private val friendSearch = MutableStateFlow(FriendSearchState())
 
     private val localData = combine(dao.users(), dao.groups(), dao.memberships()) { users, groups, memberships ->
         Triple(users, groups, memberships.groupBy({ it.groupId }, { it.userId }))
     }
 
-    private val serverData = combine(dao.syncedGroups(), tokenStore.tokens) { syncedGroups, tokens ->
+    private val serverData = combine(
+        dao.syncedGroups(),
+        dao.syncedBalances(),
+        tokenStore.tokens,
+        friendSearch,
+    ) { syncedGroups, balances, tokens, search ->
+        val settled = balances.map { MemberDto(id = it.userId, name = it.name.ifBlank { "Friend" }, isSelf = false) }
         ServerState(
             loggedIn = tokens != null,
-            // server groups shadow the local demo seed when present
             syncedGroups = if (tokens != null) {
                 syncedGroups.map { GroupEntity(id = it.id, name = it.name) }
-            } else emptyList(),
+            } else {
+                emptyList()
+            },
+            // friends found by email join the already-balanced ones — nobody is listed twice
+            friends = (settled + search.found).distinctBy { it.id },
             selfId = tokens?.userId,
+            friendSearch = search,
         )
     }
 
     val uiState: StateFlow<AddExpenseUiState> =
         combine(localData, serverData, draft, saveState, memberLoad) { (users, localGroups, membersByGroup), server, d, save, load ->
-            val useServer = server.loggedIn && server.syncedGroups.isNotEmpty()
+            val useServer = server.loggedIn
             val effectiveGroups = if (useServer) server.syncedGroups else localGroups
             var draftOut = d
             // keep the selected group valid for whichever mode is active
             if (!effectiveGroups.any { it.id == d.groupId }) {
-                draftOut = d.copy(groupId = null)
+                draftOut = d.copy(groupId = null, includedServer = emptySet())
             }
             AddExpenseUiState(
                 draft = draftOut,
@@ -123,23 +171,90 @@ class AddExpenseViewModel @Inject constructor(
                 error = save.error,
                 serverMode = useServer,
                 serverMembers = serverMembers.value,
+                serverFriends = server.friends,
                 selfServerId = server.selfId,
                 membersLoading = load.loading,
                 membersError = load.error,
+                friendSearch = server.friendSearch,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddExpenseUiState())
 
-    fun onKey(ch: Char) = draft.update {
-        val t = it.amountText
-        when {
-            ch == '.' && (t.contains('.') || t.isEmpty()) -> it
-            t.contains('.') && t.substringAfter('.').length >= 2 -> it
-            t.replace(".", "").length >= 9 -> it
-            else -> it.copy(amountText = t + ch)
+    /** Called once when the sheet opens so a previous draft never leaks in. */
+    fun prepare() {
+        draft.value = AddDraft()
+        saveState.value = SaveState()
+        memberLoad.value = MemberLoad()
+        friendSearch.value = FriendSearchState()
+    }
+
+    // ---- add a friend by email (group-less splits) ----
+
+    fun onFriendQueryChange(query: String) = friendSearch.update {
+        it.copy(query = query, error = null)
+    }
+
+    fun addFriendByEmail() {
+        val email = friendSearch.value.query.trim()
+        if (email.isEmpty() || friendSearch.value.searching) return
+        viewModelScope.launch {
+            friendSearch.update { it.copy(searching = true, error = null) }
+            try {
+                val found = ledgerApi.findUserByEmail(email)
+                val selfId = uiState.value.selfServerId
+                if (found.id == selfId) {
+                    friendSearch.value = FriendSearchState(
+                        found = friendSearch.value.found,
+                        error = "That's you — pick someone else",
+                    )
+                    return@launch
+                }
+                val person = MemberDto(id = found.id, name = found.name.ifBlank { email }, isSelf = false)
+                // one emission: keep everyone found so far so earlier picks stay in the pool
+                friendSearch.value = FriendSearchState(found = friendSearch.value.found + person)
+                draft.update { d ->
+                    d.copy(
+                        includedServer = d.includedServer + found.id,
+                        // the new person has no raw value yet; exact splits will prompt for it
+                    )
+                }
+            } catch (e: retrofit2.HttpException) {
+                friendSearch.value = FriendSearchState(
+                    query = email,
+                    found = friendSearch.value.found,
+                    error = when (e.code()) {
+                        404 -> "No teramera user with that email yet"
+                        else -> "Search failed (${e.code()})"
+                    },
+                )
+            } catch (e: Exception) {
+                friendSearch.value = FriendSearchState(
+                    query = email,
+                    found = friendSearch.value.found,
+                    error = e.message ?: "Couldn't reach the server",
+                )
+            }
         }
     }
 
-    fun onBackspace() = draft.update { it.copy(amountText = it.amountText.dropLast(1)) }
+    fun onKey(ch: Char) = draft.update { d ->
+        val t = d.amountText
+        val nextText = when {
+            ch == '.' && (t.contains('.') || t.isEmpty()) -> t
+            t.contains('.') && t.substringAfter('.').length >= 2 -> t
+            t.replace(".", "").length >= 9 -> t
+            else -> t + ch
+        }
+        d.withAmountText(nextText)
+    }
+
+    fun onBackspace() = draft.update { d -> d.withAmountText(d.amountText.dropLast(1)) }
+
+    /** Amount changes re-spread payments so a multi-payer draft stays balanced. */
+    private fun AddDraft.withAmountText(text: String): AddDraft {
+        val next = copy(amountText = text)
+        val payers = if (payers.isEmpty()) payers else evenPayers(payers.keys, next.amountMinor)
+        return next.copy(payers = payers)
+    }
 
     fun nextStep() = draft.update { it.copy(step = (it.step + 1).coerceAtMost(3)) }
 
@@ -149,37 +264,59 @@ class AddExpenseViewModel @Inject constructor(
 
     fun setGroup(groupId: String?) {
         viewModelScope.launch {
-            val isServerGroup = groupId != null &&
-                uiState.value.serverMode &&
-                uiState.value.groups.any { it.id == groupId }
-            if (isServerGroup) {
-                val loaded = loadServerMembers(groupId!!)
-                if (loaded) {
+            val state = uiState.value
+            if (state.serverMode) {
+                if (groupId == null) {
+                    draft.update { d ->
+                        d.copy(
+                            groupId = null,
+                            includedServer = defaultServerPeople(state),
+                            payers = emptyMap(),
+                            payerMode = false,
+                            splitType = SplitType.EQUAL,
+                            rawValues = emptyMap(),
+                        )
+                    }
+                    return@launch
+                }
+                if (loadServerMembers(groupId)) {
                     draft.update { d ->
                         d.copy(
                             groupId = groupId,
                             includedServer = serverMembers.value.map { it.id }.toSet(),
-                            payers = emptyMap(), // defaults to self paying full
+                            payers = emptyMap(),
                             payerMode = false,
                             splitType = SplitType.EQUAL,
+                            rawValues = emptyMap(),
                         )
                     }
                 }
-                // on failure the error is surfaced in the UI with a retry — don't
-                // silently fall through to local mode, that dead-ends at no members
                 return@launch
             }
-            draft.update { draft ->
+
+            draft.update { d ->
                 val members = currentMembers(groupId)
-                draft.copy(
+                d.copy(
                     groupId = groupId,
                     included = if (members.isEmpty()) emptySet()
-                    else draft.included.filter { it in members || it == SELF_ID }
+                    else d.included.filter { it in members || it == SELF_ID }
                         .toSet().ifEmpty { setOf(SELF_ID) + members },
                 )
             }
         }
     }
+
+    /** Sign-in with no group selected: default to you + the friends you already share with. */
+    fun ensureServerDefaults() {
+        val state = uiState.value
+        if (!state.serverMode) return
+        if (state.draft.groupId != null || state.draft.includedServer.isNotEmpty()) return
+        val people = defaultServerPeople(state)
+        if (people.size >= 2) draft.update { it.copy(includedServer = people) }
+    }
+
+    private fun defaultServerPeople(state: AddExpenseUiState): Set<String> =
+        (listOfNotNull(state.selfServerId) + state.serverFriends.map { it.id }).toSet()
 
     private suspend fun loadServerMembers(groupId: String): Boolean {
         memberLoad.value = MemberLoad(loading = true)
@@ -205,71 +342,51 @@ class AddExpenseViewModel @Inject constructor(
         }
     }
 
-    /** Server-mode payer toggling; amounts auto-default to an even share of the total. */
+    /** Selecting another payer re-splits the total evenly between all selected payers. */
     fun togglePayer(userId: String) = draft.update { d ->
-        val next = d.payers.toMutableMap()
-        if (!next.remove(userId).let { it != null }) next[userId] = 0L
-        d.copy(payers = normalizePayers(next, d.amountMinor, d.payerMode))
+        // an empty map means "you paid it all"; materialise that before adding someone
+        val current = d.payers.ifEmpty { mapOf(uiState.value.selfId to d.amountMinor) }
+        val next = current.keys.toMutableSet()
+        if (!next.remove(userId)) next.add(userId)
+        when {
+            next.isEmpty() -> d.copy(payers = emptyMap())
+            // one payer left → they front the whole amount
+            next.size == 1 -> d.copy(payers = mapOf(next.first() to d.amountMinor))
+            else -> d.copy(payers = evenPayers(next, d.amountMinor))
+        }
     }
 
     fun setPayerAmount(userId: String, minor: Long) = draft.update { d ->
-        d.copy(payers = normalizePayers(d.payers + (userId to minor.coerceAtLeast(0)), d.amountMinor, true))
+        if (userId !in d.payers) return@update d
+        d.copy(payers = d.payers + (userId to minor.coerceAtLeast(0)))
     }
 
     fun togglePayerMode() = draft.update { d ->
-        d.copy(payerMode = !d.payerMode, payers = normalizePayers(d.payers, d.amountMinor, !d.payerMode))
+        val next = !d.payerMode
+        d.copy(payerMode = next, payers = if (next) d.payers else emptyMap())
     }
 
     fun toggleParticipantServer(userId: String) = draft.update { d ->
-        // the current payer set must stay inside the split
         val next = d.includedServer.toMutableSet()
         if (!next.remove(userId)) next.add(userId)
         if (next.isEmpty()) return@update d
-        if (d.payers.keys.any { it !in next } && d.paymentsSum() > 0) return@update d
         d.copy(includedServer = next)
     }
 
-    private fun AddDraft.paymentsSum(): Long =
-        if (payers.isEmpty()) amountMinor else payers.values.sum()
-
-    private fun normalizePayers(
-        payers: Map<String, Long>,
-        totalMinor: Long,
-        multi: Boolean,
-    ): Map<String, Long> {
-        if (payers.isEmpty()) return emptyMap()
-        return when {
-            !multi || payers.size == 1 ->
-                payers.mapValues { totalMinor } // single payer fronts the whole amount
-            else -> {
-                // even default for un-edited entries; edited ones keep their value.
-                // caller validates the sum before save.
-                val zeroed = payers.filterValues { it == 0L }
-                if (zeroed.isEmpty()) payers
-                else {
-                    val each = totalMinor / payers.size
-                    var remainder = totalMinor - each * payers.size
-                    val result = payers.toMutableMap()
-                    for ((uid, v) in result) {
-                        if (v == 0L) {
-                            result[uid] = each + if (remainder > 0) { remainder--; 1 } else 0
-                        }
-                    }
-                    result
-                }
-            }
-        }
+    private fun evenPayers(ids: Collection<String>, totalMinor: Long): Map<String, Long> {
+        val people = ids.toList()
+        if (people.isEmpty()) return emptyMap()
+        val per = totalMinor / people.size
+        var remainder = totalMinor - per * people.size
+        return people.associateWith { per + if (remainder > 0) { remainder--; 1L } else 0L }
     }
 
     fun setSplitType(type: SplitType) = draft.update { it.copy(splitType = type) }
 
-    fun setPayer(userId: String) = draft.update {
-        it.copy(paidByUserId = userId, included = it.included + userId)
-    }
-
     fun toggleParticipant(userId: String) = draft.update { d ->
-        // the payer must stay in the split — they fronted the money
-        if (userId == d.paidByUserId) return@update d
+        // whoever fronted the money must stay in the split
+        val payers = d.payers.keys.ifEmpty { setOf(d.paidByUserId) }
+        if (userId in payers) return@update d
         val next = d.included.toMutableSet()
         if (!next.add(userId)) next.remove(userId)
         d.copy(included = next)
@@ -305,37 +422,73 @@ class AddExpenseViewModel @Inject constructor(
             else -> null
         }
 
+    // ---- server-mode split (all four types) ----
+
+    fun serverShares(state: AddExpenseUiState): List<Pair<String, Long>>? =
+        when (val result = ExpensesRepository.computeSplit(currentServerInput(state))) {
+            is SplitResult.Ok -> result.shares
+            is SplitResult.Invalid -> null
+        }
+
+    fun serverValidationError(state: AddExpenseUiState): String? =
+        when (val result = ExpensesRepository.computeSplit(currentServerInput(state))) {
+            is SplitResult.Invalid -> result.reason
+            else -> null
+        }
+
+    private fun currentServerInput(state: AddExpenseUiState) = SplitInput(
+        type = state.draft.splitType,
+        totalMinor = state.draft.amountMinor,
+        participants = state.draft.includedServer.toList(),
+        rawValues = state.draft.rawValues,
+    )
+
     fun save(onDone: () -> Unit) {
         viewModelScope.launch {
             val state = uiState.value
             val d = state.draft
 
-        // Signed in with a group → push to the backend.
-        if (state.serverMode && d.groupId != null) {
-            val selfId = syncRepository.selfUserId()
-            if (selfId == null) {
-                saveState.value = SaveState(error = "Not signed in")
-                return@launch
-            }
-            val payers = d.payers.ifEmpty { mapOf(selfId to d.amountMinor) }
-            val sum = payers.values.sum()
-            if (sum != d.amountMinor) {
-                saveState.value = SaveState(error =
-                    "Payer amounts add up to ₹${sum / 100}, not ₹${d.amountMinor / 100}")
-                return@launch
-            }
+            // Signed in → push to the backend (with or without a group).
+            if (state.serverMode) {
+                val selfId = state.selfServerId
+                if (selfId == null) {
+                    saveState.value = SaveState(error = "Not signed in")
+                    return@launch
+                }
+                val participants = d.includedServer.toList()
+                if (participants.size < 2) {
+                    saveState.value = SaveState(error = "Pick at least two people")
+                    return@launch
+                }
+                val split = ExpensesRepository.computeSplit(currentServerInput(state))
+                if (split is SplitResult.Invalid) {
+                    saveState.value = SaveState(error = split.reason)
+                    return@launch
+                }
+                val payers = d.payers.ifEmpty { mapOf(selfId to d.amountMinor) }
+                val sum = payers.values.sum()
+                if (sum != d.amountMinor) {
+                    saveState.value = SaveState(
+                        error = "Payer amounts add up to ₹${sum / 100}, not ₹${d.amountMinor / 100}",
+                    )
+                    return@launch
+                }
                 saveState.value = SaveState(saving = true)
                 try {
                     ledgerApi.createExpense(
-                        com.example.teramera.core.network.CreateExpenseRequestDto(
+                        CreateExpenseRequestDto(
                             groupId = d.groupId,
                             title = d.title.trim(),
                             amountMinor = d.amountMinor,
-                            splitType = "EQUAL",
-                            participantIds = d.includedServer.toList(),
-                            payments = payers.map { (uid, minor) ->
-                                com.example.teramera.core.network.PaymentDto(uid, minor)
+                            splitType = d.splitType.name,
+                            // EQUAL uses the participant list; the other three need raw values
+                            participantIds = if (d.splitType == SplitType.EQUAL) participants else null,
+                            participants = if (d.splitType == SplitType.EQUAL) {
+                                null
+                            } else {
+                                participants.associateWith { d.rawValues[it] ?: 0L }
                             },
+                            payments = payers.map { (uid, minor) -> PaymentDto(uid, minor) },
                         )
                     )
                     syncRepository.refreshNow()
@@ -345,15 +498,25 @@ class AddExpenseViewModel @Inject constructor(
                 } catch (e: Exception) {
                     saveState.value = SaveState(error = e.message ?: "Couldn't reach the server")
                 }
-            return@launch
-        }
+                return@launch
+            }
+
+            val localPayers = d.payers
+            val localPaid = localPayers.values.sum()
+            if (localPayers.isNotEmpty() && localPaid != d.amountMinor) {
+                saveState.value = SaveState(
+                    error = "Payer amounts add up to ₹${localPaid / 100}, not ₹${d.amountMinor / 100}",
+                )
+                return@launch
+            }
 
             saveState.value = SaveState(saving = true)
             val result = expensesRepository.saveExpense(
                 groupId = d.groupId,
-                paidByUserId = d.paidByUserId,
+                paidByUserId = localPayers.keys.firstOrNull() ?: d.paidByUserId,
                 title = d.title,
                 input = currentInput(state),
+                payments = localPayers,
             )
             result.fold(
                 onSuccess = {

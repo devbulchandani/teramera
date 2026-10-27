@@ -3,9 +3,12 @@ package com.example.teramera.ui.groups
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.teramera.data.local.PaymentMethod
+import com.example.teramera.data.repository.DebtTransfer
 import com.example.teramera.data.repository.GroupDetail
 import com.example.teramera.data.repository.GroupDetailRepository
 import com.example.teramera.data.sync.SyncRepository
+import com.example.teramera.core.network.CreateSettlementRequestDto
 import com.example.teramera.core.network.GroupDetailDto
 import com.example.teramera.core.network.LedgerApi
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,6 +31,14 @@ data class AddMemberState(
     val visible: Boolean = false,
     val searching: Boolean = false,
     val found: com.example.teramera.core.network.FoundUserDto? = null,
+    val error: String? = null,
+)
+
+data class GroupSettleState(
+    val visible: Boolean = false,
+    val transfer: DebtTransfer? = null,
+    val method: PaymentMethod = PaymentMethod.UPI,
+    val busy: Boolean = false,
     val error: String? = null,
 )
 
@@ -83,6 +94,7 @@ class GroupDetailViewModel @Inject constructor(
                 remote.value = GroupDetail(
                     groupId = d.id,
                     groupName = d.name,
+                    selfUserId = syncRepository.selfUserId().orEmpty(),
                     memberInitials = d.members.map { initialsOfName(it.name) to it.isSelf },
                     memberIds = d.members.map { it.id },
                     totalSpentMinor = d.totalSpentMinor,
@@ -91,6 +103,7 @@ class GroupDetailViewModel @Inject constructor(
                             id = it.id,
                             title = it.title,
                             payerName = memberName(d, it.paidByUserId),
+                            payerCount = it.payerCount,
                             amountMinor = it.amountMinor,
                             myShareMinor = it.myShareMinor,
                             participantCount = it.participantCount,
@@ -106,7 +119,7 @@ class GroupDetailViewModel @Inject constructor(
                             amountMinor = it.amountMinor,
                         )
                     },
-                    worstCasePayments = 0,
+                    worstCasePayments = d.worstCasePayments,
                 )
             } catch (e: retrofit2.HttpException) {
                 remoteError.value = when (e.code()) {
@@ -119,6 +132,56 @@ class GroupDetailViewModel @Inject constructor(
                     ?: "Couldn't reach the server."
             } finally {
                 loadingRemote.value = false
+            }
+        }
+    }
+
+    // ---- settle up (group-scoped) ----
+
+    private val settleState = MutableStateFlow(GroupSettleState())
+    val settle: StateFlow<GroupSettleState> = settleState
+
+    /** Opens the picker; choosing a transfer switches the sheet to that debt. */
+    fun openSettlePicker() {
+        settleState.value = GroupSettleState(visible = true)
+    }
+
+    fun startSettle(transfer: DebtTransfer) {
+        settleState.value = GroupSettleState(visible = true, transfer = transfer)
+    }
+
+    fun dismissSettle() {
+        if (!settleState.value.busy) settleState.value = GroupSettleState()
+    }
+
+    fun setSettleMethod(method: PaymentMethod) {
+        settleState.value = settleState.value.copy(method = method)
+    }
+
+    /** Records a payment against a simplified group debt, in either direction. */
+    fun confirmSettle() {
+        val transfer = settleState.value.transfer ?: return
+        if (settleState.value.busy) return
+        viewModelScope.launch {
+            settleState.value = settleState.value.copy(busy = true, error = null)
+            try {
+                ledgerApi.createSettlement(
+                    CreateSettlementRequestDto(
+                        groupId = groupId,
+                        payerUserId = transfer.fromUserId,
+                        paidToUserId = transfer.toUserId,
+                        amountMinor = transfer.amountMinor,
+                        method = settleState.value.method.name,
+                    )
+                )
+                settleState.value = GroupSettleState()
+                syncRepository.refreshNow()
+                refresh()
+            } catch (e: Exception) {
+                settleState.value = settleState.value.copy(
+                    busy = false,
+                    error = e.message?.takeIf { it.isNotBlank() } ?: "Couldn't record the payment",
+                )
             }
         }
     }

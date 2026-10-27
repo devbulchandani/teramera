@@ -47,6 +47,11 @@ data class ExpenseEntity(
     val title: String,
     val amountMinor: Long,
     val createdAt: Long,
+    /**
+     * Multi-payer expenses are stored as one row per payer, all sharing this id.
+     * Null means the row is a whole expense on its own.
+     */
+    val parentId: String? = null,
 )
 
 @Entity(tableName = "expense_shares", primaryKeys = ["expenseId", "userId"])
@@ -166,8 +171,18 @@ interface TerameraDao {
     @Query("SELECT COUNT(*) AS c FROM synced_groups")
     fun syncedGroupCount(): Flow<Long>
 
+    @Query("DELETE FROM synced_groups")
+    suspend fun clearSyncedGroups()
+
     @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
     suspend fun insertSyncedGroups(groups: List<SyncedGroupEntity>)
+
+    /** Clear + insert in one transaction so stale groups never linger after a sync. */
+    @androidx.room.Transaction
+    suspend fun replaceSyncedGroups(groups: List<SyncedGroupEntity>) {
+        clearSyncedGroups()
+        insertSyncedGroups(groups)
+    }
 
     @Query("SELECT * FROM synced_activity ORDER BY createdAt DESC")
     fun syncedActivity(): Flow<List<SyncedActivityEntity>>
@@ -188,6 +203,10 @@ interface TerameraDao {
     @Query("SELECT * FROM users WHERE isSelf = 1 LIMIT 1")
     fun selfUser(): Flow<UserEntity?>
 
+    /** The account on this device changed — don't leave the old "me" around. */
+    @Query("DELETE FROM users WHERE isSelf = 1")
+    suspend fun clearSelfUsers()
+
     @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: UserEntity)
 
@@ -197,6 +216,33 @@ interface TerameraDao {
     @Insert suspend fun insertExpenses(expenses: List<ExpenseEntity>): List<Long>
     @Insert suspend fun insertShares(shares: List<ExpenseShareEntity>)
     @Insert suspend fun insertSettlement(settlement: SettlementEntity)
+
+    /** Wipes everything this device cached about the signed-in account. */
+    @androidx.room.Transaction
+    suspend fun clearAccountData() {
+        clearSyncedBalances()
+        clearSyncedGroups()
+        clearSyncedActivity()
+        clearSelfUsers()
+        clearLocalLedger()
+    }
+
+    @Query("DELETE FROM users") suspend fun clearUsers()
+    @Query("DELETE FROM `groups`") suspend fun clearGroups()
+    @Query("DELETE FROM memberships") suspend fun clearMemberships()
+    @Query("DELETE FROM expenses") suspend fun clearExpenses()
+    @Query("DELETE FROM expense_shares") suspend fun clearExpenseShares()
+    @Query("DELETE FROM settlements") suspend fun clearSettlements()
+
+    @androidx.room.Transaction
+    suspend fun clearLocalLedger() {
+        clearExpenseShares()
+        clearExpenses()
+        clearSettlements()
+        clearMemberships()
+        clearGroups()
+        clearUsers()
+    }
 }
 
 @Database(
@@ -211,7 +257,7 @@ interface TerameraDao {
         SyncedGroupEntity::class,
         SyncedActivityEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class TerameraDatabase : RoomDatabase() {

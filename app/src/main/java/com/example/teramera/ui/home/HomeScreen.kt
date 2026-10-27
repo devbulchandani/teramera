@@ -51,12 +51,19 @@ fun HomeScreen(
     onLogout: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val updateCheck by viewModel.updateCheck.collectAsStateWithLifecycle()
     HomeContent(
         state = state,
+        updateCheck = updateCheck,
+        versionName = viewModel.versionName,
+        versionCode = viewModel.versionCode,
         onAddExpense = onAddExpense,
         onOpenGroup = onOpenGroup,
         onLogout = onLogout,
         onSaveProfile = viewModel::saveProfile,
+        onCheckForUpdates = viewModel::checkForUpdates,
+        onInstallUpdate = viewModel::installUpdate,
+        onDismissUpdateCheck = viewModel::resetUpdateCheck,
     )
 }
 
@@ -65,19 +72,28 @@ enum class HomeTab(val label: String) { Friends("Friends"), Groups("Groups"), Al
 @Composable
 fun HomeContent(
     state: HomeUiState,
+    updateCheck: UpdateCheck = UpdateCheck(),
+    versionName: String = com.example.teramera.BuildConfig.VERSION_NAME,
+    versionCode: Int = com.example.teramera.BuildConfig.VERSION_CODE,
     onAddExpense: () -> Unit = {},
     onOpenGroup: (String) -> Unit = {},
     onLogout: () -> Unit = {},
     onSaveProfile: (name: String, upiId: String) -> Unit = { _, _ -> },
+    onCheckForUpdates: () -> Unit = {},
+    onInstallUpdate: (com.example.teramera.core.update.UpdateInfo) -> Unit = {},
+    onDismissUpdateCheck: () -> Unit = {},
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var profileOpen by remember { mutableStateOf(false) }
+    var versionOpen by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar(
             state = state,
             onLogout = onLogout,
             onOpenProfile = { profileOpen = true },
+            versionName = versionName,
+            onOpenVersion = { versionOpen = true },
         )
         if (profileOpen) {
             ProfileDialog(
@@ -87,6 +103,22 @@ fun HomeContent(
                     profileOpen = false
                 },
                 onDismiss = { profileOpen = false },
+            )
+        }
+        if (versionOpen) {
+            VersionDialog(
+                versionName = versionName,
+                versionCode = versionCode,
+                check = updateCheck,
+                onCheck = onCheckForUpdates,
+                onInstall = { info ->
+                    onInstallUpdate(info)
+                    versionOpen = false
+                },
+                onDismiss = {
+                    versionOpen = false
+                    onDismissUpdateCheck()
+                },
             )
         }
         HeroCard(
@@ -144,6 +176,8 @@ internal fun TopBar(
     state: HomeUiState = HomeUiState(),
     onLogout: () -> Unit = {},
     onOpenProfile: () -> Unit = {},
+    versionName: String = com.example.teramera.BuildConfig.VERSION_NAME,
+    onOpenVersion: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -177,6 +211,20 @@ internal fun TopBar(
                     onClick = {
                         menuOpen = false
                         onOpenProfile()
+                    },
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("App version") },
+                    trailingIcon = {
+                        Text(
+                            versionName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onOpenVersion()
                     },
                 )
                 androidx.compose.material3.DropdownMenuItem(
@@ -419,6 +467,77 @@ private fun ProfileDialog(
         },
         dismissButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+/** Version + manual update check, opened from the avatar menu. */
+@Composable
+private fun VersionDialog(
+    versionName: String,
+    versionCode: Int,
+    check: UpdateCheck,
+    onCheck: () -> Unit,
+    onInstall: (com.example.teramera.core.update.UpdateInfo) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val available = check.available
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+        title = { Text("teramera") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Version $versionName", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Build $versionCode · Android 8.0+",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "teramera installs its own updates, so there's no app store to wait on.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                when (check.status) {
+                    UpdateCheck.Status.Checking -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text("Checking for updates…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    UpdateCheck.Status.UpToDate -> Text(
+                        "You're on the latest version.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    UpdateCheck.Status.Available -> Text(
+                        "Version ${available?.versionName} is available.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    UpdateCheck.Status.Idle -> Unit
+                }
+            }
+        },
+        confirmButton = {
+            if (available != null) {
+                androidx.compose.material3.TextButton(onClick = { onInstall(available) }) {
+                    Text("Update now", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                androidx.compose.material3.TextButton(
+                    enabled = check.status != UpdateCheck.Status.Checking,
+                    onClick = onCheck,
+                ) { Text("Check for updates", fontWeight = FontWeight.Bold) }
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Done") }
         },
     )
 }

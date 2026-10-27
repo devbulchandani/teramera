@@ -2,6 +2,7 @@ package com.example.teramera.core.auth
 
 import com.example.teramera.core.network.AuthTokens
 import com.example.teramera.core.network.GoogleLoginRequestDto
+import com.example.teramera.core.network.LogoutRequestDto
 import com.example.teramera.core.network.TokenStore
 import com.example.teramera.core.network.AuthApi
 import kotlinx.coroutines.flow.Flow
@@ -33,7 +34,11 @@ class AuthRepository @Inject constructor(
         }
 
     suspend fun logout() {
+        // best effort: revoke the refresh token server-side, then wipe local caches
+        tokenStore.current()?.let { tokens ->
+            runCatching { authApi.logout(LogoutRequestDto(tokens.refreshToken)) }
+        }
         tokenStore.clear()
-        dao.clearSyncedBalances()
+        dao.clearAccountData()
     }
 }

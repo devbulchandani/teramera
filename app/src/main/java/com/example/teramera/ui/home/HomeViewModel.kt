@@ -2,6 +2,9 @@ package com.example.teramera.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.teramera.BuildConfig
+import com.example.teramera.core.update.AppUpdateManager
+import com.example.teramera.core.update.UpdateInfo
 import com.example.teramera.data.repository.BalanceEntry
 import com.example.teramera.data.repository.HomeData
 import com.example.teramera.data.repository.HomeRepository
@@ -27,13 +30,49 @@ data class HomeUiState(
     val netMinor: Long = friends.sumOf { it.amountMinor }
 }
 
+/** Result of the "check for updates" button in the version dialog. */
+data class UpdateCheck(
+    val status: Status = Status.Idle,
+    val available: UpdateInfo? = null,
+) {
+    enum class Status { Idle, Checking, UpToDate, Available }
+}
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: HomeRepository,
     private val syncRepository: SyncRepository,
+    private val updateManager: AppUpdateManager,
 ) : ViewModel() {
 
     private val profileStatus = MutableStateFlow(false)
+
+    private val _updateCheck = MutableStateFlow(UpdateCheck())
+    val updateCheck: StateFlow<UpdateCheck> = _updateCheck
+
+    /** Version shown in the dialog; the slug comes from the build itself, not the server. */
+    val versionName: String = BuildConfig.VERSION_NAME
+    val versionCode: Int = BuildConfig.VERSION_CODE
+
+    /** Manual check — the app also checks silently on launch (see SessionViewModel). */
+    fun checkForUpdates() {
+        if (_updateCheck.value.status == UpdateCheck.Status.Checking) return
+        viewModelScope.launch {
+            _updateCheck.value = UpdateCheck(UpdateCheck.Status.Checking)
+            val info = updateManager.checkForUpdate(BuildConfig.VERSION_CODE)
+            _updateCheck.value = if (info == null) {
+                UpdateCheck(UpdateCheck.Status.UpToDate)
+            } else {
+                UpdateCheck(UpdateCheck.Status.Available, info)
+            }
+        }
+    }
+
+    fun installUpdate(info: UpdateInfo) = updateManager.downloadAndInstall(info.apkUrl)
+
+    fun resetUpdateCheck() {
+        _updateCheck.value = UpdateCheck()
+    }
 
     val uiState: StateFlow<HomeUiState> =
         combine(

@@ -69,8 +69,10 @@ internal data class LedgerSnapshot(
         }
 
         val membersByGroup = memberships.groupBy({ it.groupId }, { it.userId })
-        // O(G+E) for the subtitle instead of O(G×E) — count once per group.
-        val expenseCountByGroup = expenses.groupBy { it.groupId }.mapValues { it.value.size }
+        // O(G+E) for the subtitle instead of O(G×E) — count once per group, one per
+        // logical expense (multi-payer rows share a parent).
+        val expenseCountByGroup = expenses.groupBy { it.groupId }
+            .mapValues { (_, rows) -> rows.map { it.parentId ?: it.id.toString() }.distinct().size }
 
         val friends = friendNet.mapNotNull { (userId, net) ->
             val user = usersById[userId] ?: return@mapNotNull null

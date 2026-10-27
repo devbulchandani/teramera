@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.teramera.data.local.PaymentMethod
 import com.example.teramera.data.repository.initials
 import com.example.teramera.ui.home.formatInr
 import java.text.SimpleDateFormat
@@ -54,6 +54,7 @@ fun GroupDetailScreen(
     val uiState by viewModel.detail.collectAsStateWithLifecycle()
     val addMemberState by viewModel.addMemberState.collectAsStateWithLifecycle()
     val expenseEditState by viewModel.expenseEditState.collectAsStateWithLifecycle()
+    val settleState by viewModel.settle.collectAsStateWithLifecycle()
 
     // loading / error / empty states instead of a blank screen
     if (uiState.loading) {
@@ -117,6 +118,17 @@ fun GroupDetailScreen(
         )
     }
 
+    if (settleState.visible) {
+        GroupSettleDialog(
+            state = settleState,
+            detail = d,
+            onPick = viewModel::startSettle,
+            onMethod = viewModel::setSettleMethod,
+            onConfirm = viewModel::confirmSettle,
+            onDismiss = viewModel::dismissSettle,
+        )
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         androidx.compose.foundation.layout.Box(
             modifier = Modifier
@@ -169,7 +181,7 @@ fun GroupDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Button(
-                    onClick = { /* settle flow scoped to group comes later */ },
+                    onClick = viewModel::openSettlePicker,
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -315,7 +327,11 @@ private fun SimplifiedDebtsCard(d: com.example.teramera.data.repository.GroupDet
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                "${d.simplifiedDebts.size} payments instead of ${d.worstCasePayments}",
+                if (d.worstCasePayments > d.simplifiedDebts.size) {
+                    "${d.simplifiedDebts.size} payments instead of ${d.worstCasePayments}"
+                } else {
+                    "${d.simplifiedDebts.size} payments"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -380,7 +396,7 @@ private fun ExpenseRow(
         Column(Modifier.weight(1f)) {
             Text(line.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp))
             Text(
-                "paid by ${line.payerName} · ${line.participantCount} people · ${dateLabel(line.createdAt)}",
+                "paid by ${line.payerName}${if (line.payerCount > 1) " +${line.payerCount - 1}" else ""} · ${line.participantCount} people · ${dateLabel(line.createdAt)}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -524,6 +540,113 @@ private fun AddMemberDialog(
             androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
+}
+
+@Composable
+private fun GroupSettleDialog(
+    state: GroupSettleState,
+    detail: com.example.teramera.data.repository.GroupDetail,
+    onPick: (com.example.teramera.data.repository.DebtTransfer) -> Unit,
+    onMethod: (PaymentMethod) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val transfer = state.transfer
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = { Text(if (transfer == null) "Settle up" else "Record payment") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (transfer == null) {
+                    if (detail.simplifiedDebts.isEmpty()) {
+                        Text(
+                            "Everyone's square in ${detail.groupName}.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        detail.simplifiedDebts.forEach { debt ->
+                            val involved = detail.selfUserId == debt.fromUserId ||
+                                detail.selfUserId == debt.toUserId
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        "${shortName(debt.fromName)} → ${shortName(debt.toName)}",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+                                    )
+                                    Text(
+                                        "₹${formatInr(debt.amountMinor)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                androidx.compose.material3.TextButton(
+                                    enabled = involved && !state.busy,
+                                    onClick = { onPick(debt) },
+                                ) { Text(if (involved) "Settle" else "Not you") }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "${shortName(transfer.fromName)} pays ${shortName(transfer.toName)} ₹${formatInr(transfer.amountMinor)}",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        "How was it paid?",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PaymentMethod.entries.forEach { method ->
+                            val selected = state.method == method
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(
+                                        if (selected) MaterialTheme.colorScheme.primaryContainer
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    .clickable { onMethod(method) }
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                            ) {
+                                Text(methodLabel(method), style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                    state.error?.let {
+                        Text(
+                            it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (transfer != null) {
+                androidx.compose.material3.TextButton(enabled = !state.busy, onClick = onConfirm) {
+                    Text(
+                        if (state.busy) "Recording…" else "Record payment",
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Close") }
+        },
+    )
+}
+
+private fun methodLabel(method: PaymentMethod): String = when (method) {
+    PaymentMethod.UPI -> "UPI"
+    PaymentMethod.CASH -> "Cash"
+    PaymentMethod.BANK -> "Bank"
 }
 
 @Composable

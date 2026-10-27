@@ -3,8 +3,6 @@ package com.example.teramera.ui.settle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teramera.data.local.PaymentMethod
-import com.example.teramera.data.local.SettlementEntity
-import com.example.teramera.data.local.TerameraDao
 import com.example.teramera.data.repository.BalanceEntry
 import com.example.teramera.data.repository.HomeRepository
 import com.example.teramera.data.sync.SyncRepository
@@ -38,12 +36,10 @@ data class SettleUiState(
 
 @HiltViewModel
 class SettleViewModel @Inject constructor(
-    private val dao: TerameraDao,
     private val syncRepository: SyncRepository,
     homeRepository: HomeRepository,
 ) : ViewModel() {
 
-    private val LOCAL_SELF = "u_dev"
     private val draft = MutableStateFlow<SettleDraft?>(null)
     private val status = MutableStateFlow(SaveStatus())
 
@@ -51,7 +47,8 @@ class SettleViewModel @Inject constructor(
         combine(homeRepository.homeData(), homeRepository.syncedHomeData(), draft, status) { local, synced, d, st ->
             val source = synced ?: local
             SettleUiState(
-                balances = (source.friends + source.groups).filter { it.amountMinor != 0L },
+                // groups are aggregates of friend debts — settling one would be meaningless
+                balances = source.friends.filter { it.amountMinor != 0L },
                 draft = d,
                 saving = st.saving,
                 saved = st.saved,
@@ -67,9 +64,10 @@ class SettleViewModel @Inject constructor(
         )
     }
 
+    /** Dismisses the sheet from any stage, including the "settled" confirmation. */
     fun clear() {
-        if (status.value.saved) return // stay on the done screen
         draft.value = null
+        status.value = SaveStatus()
     }
 
     fun setFull() = draft.update { it?.copy(customMode = false, amountMinor = it.fullAmount) }
@@ -93,51 +91,27 @@ class SettleViewModel @Inject constructor(
     fun setMethod(method: PaymentMethod) = draft.update { it?.copy(method = method) }
 
     fun save(onDone: () -> Unit) {
-        val state = uiState.value
-        val d = state.draft ?: return
+        val d = uiState.value.draft ?: return
         if (d.amountMinor <= 0 || d.amountMinor > d.fullAmount || status.value.saving) return
         viewModelScope.launch {
-            if (syncRepository.isLoggedIn()) {
-                status.value = SaveStatus(saving = true)
-                when (val result = syncRepository.pushSettlement(
-                    personUserId = d.person.id,
-                    personNetMinor = d.person.amountMinor,
-                    amountMinor = d.amountMinor,
-                    method = d.method.name,
-                )) {
-                    is SyncRepository.Result.Success -> {
-                        status.value = SaveStatus(saved = true)
-                        onDone()
-                    }
-                    is SyncRepository.Result.Failure -> {
-                        // offline: keep the record locally so nothing is lost
-                        insertLocally(d)
-                        status.value = SaveStatus(saved = true)
-                        onDone()
-                    }
-                }
-                return@launch
-            }
-
             status.value = SaveStatus(saving = true)
-            insertLocally(d)
-            status.value = SaveStatus(saved = true)
-        }
-    }
-
-    private suspend fun insertLocally(d: SettleDraft) {
-        // positive balance = they owe me → they pay me
-        val (payer, payee) = if (d.person.amountMinor > 0) d.person.id to LOCAL_SELF else LOCAL_SELF to d.person.id
-        dao.insertSettlement(
-            SettlementEntity(
-                groupId = null,
-                payerUserId = payer,
-                paidToUserId = payee,
+            when (val result = syncRepository.pushSettlement(
+                personUserId = d.person.id,
+                personNetMinor = d.person.amountMinor,
                 amountMinor = d.amountMinor,
                 method = d.method.name,
-                createdAt = System.currentTimeMillis(),
-            )
-        )
+            )) {
+                is SyncRepository.Result.Success -> {
+                    status.value = SaveStatus(saved = true)
+                    onDone()
+                }
+                is SyncRepository.Result.Failure -> {
+                    // Nothing is written locally: a settlement that never reached the
+                    // server would show as "paid" while everyone else still owes it.
+                    status.value = SaveStatus(error = result.message)
+                }
+            }
+        }
     }
 
     private data class SaveStatus(val saving: Boolean = false, val saved: Boolean = false, val error: String? = null)

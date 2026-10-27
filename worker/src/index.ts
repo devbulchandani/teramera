@@ -54,7 +54,7 @@ type Row = Record<string, any>;
 app.use("*", cors());
 
 app.use(async (c, next) => {
-    if (c.req.path.startsWith("/auth/") || c.req.path === "/" || c.req.path.startsWith("/invite/") || c.req.path === "/app/version") return next();
+    if (c.req.path.startsWith("/auth/") || c.req.path === "/" || c.req.path === "/health" || c.req.path.startsWith("/invite/") || c.req.path === "/app/version") return next();
     const header = c.req.header("Authorization");
     if (!header?.startsWith("Bearer ")) {
         return c.json({ message: "unauthorized" }, 401);
@@ -65,11 +65,56 @@ app.use(async (c, next) => {
     await next();
 });
 
-app.get("/", (c) => c.json({ name: "teramera-api", status: "ok" }));
+/** Public download page — the app's "website" and the link shared with new people. */
+app.get("/", (c) => {
+    const origin = originOf(c);
+    const apkUrl = c.env.APK_DOWNLOAD_URL || `${origin}/teramera.apk`;
+    const versionName = c.env.APP_VERSION_NAME || "1.0";
+    const versionCode = Number(c.env.APP_VERSION_CODE || 1);
+    const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>teramera — split expenses with friends</title>
+<meta name="description" content="Split expenses with friends, keep every balance fair, and settle up in the fewest payments possible.">
+<style>
+ *{box-sizing:border-box}
+ body{font-family:-apple-system,system-ui,'Segoe UI',sans-serif;background:#FBF9F4;color:#251C15;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+ .card{max-width:400px;width:100%;background:#F5F1E8;border-radius:24px;padding:36px 28px;text-align:center;box-shadow:0 6px 24px rgba(37,28,21,.08)}
+ .logo{font-size:40px;font-weight:800;letter-spacing:-2px}
+ .tere{color:#825EA9}.mera{color:#00848B}
+ h1{font-size:22px;margin:18px 0 8px;font-weight:700}
+ p{font-size:15px;color:#5B5046;line-height:1.5;margin:0 0 24px}
+ .btn{display:block;padding:16px;border-radius:16px;text-decoration:none;font-weight:700;font-size:15.5px;margin-bottom:12px}
+ .btn-primary{background:#00848B;color:#fff}
+ ul{list-style:none;padding:0;margin:26px 0 0;text-align:left}
+ li{font-size:14px;color:#5B5046;line-height:1.5;margin-bottom:12px;padding-left:26px;position:relative}
+ li b{color:#251C15}
+ li:before{content:"✓";position:absolute;left:0;color:#00848B;font-weight:700}
+ small{display:block;margin-top:20px;font-size:12px;color:#877F75;line-height:1.5}
+ .badge{display:inline-block;background:#D2EEF0;color:#00565b;font-size:11.5px;font-weight:700;padding:4px 12px;border-radius:999px;margin-bottom:14px}
+</style></head>
+<body><div class="card">
+ <div class="badge">ANDROID APP</div>
+ <div class="logo"><span class="tere">tere</span><span class="mera">mera</span></div>
+ <h1>Split expenses, skip the awkwardness</h1>
+ <p>Add an expense however you like — equal, exact, shares or percent, even paid by several people. teramera keeps every balance fair and settles up in the fewest payments possible.</p>
+ <a class="btn btn-primary" href="${apkUrl}">Download teramera</a>
+ <ul>
+  <li><b>Works offline.</b> Log expenses on a trip and sync when you're back.</li>
+  <li><b>Fair to the paisa.</b> Splits always add up exactly.</li>
+  <li><b>Pay by UPI.</b> Settle straight from the app.</li>
+ </ul>
+ <small>Version ${versionName} (build ${versionCode}) · Android 8.0+<br>
+ Already installed? teramera updates itself — no app store needed.</small>
+</div></body></html>`;
+    return c.html(html);
+});
+
+/** Lightweight health probe for uptime checks. */
+app.get("/health", (c) => c.json({ name: "teramera-api", status: "ok" }));
 
 /** Current APK version — the app polls this on launch to offer in-app updates. */
 app.get("/app/version", (c) => {
-    const origin = c.env.APP_BASE_URL || `https://${c.req.header("host")}`;
+    const origin = originOf(c);
     return c.json({
         versionCode: Number(c.env.APP_VERSION_CODE || 1),
         versionName: c.env.APP_VERSION_NAME || "1.0",
@@ -90,6 +135,57 @@ async function run(c: any, sql: string, ...params: unknown[]) {
 
 function badRequest(message: string) {
     throw new HttpError(400, message);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+    return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+/** Public origin for links; follows the request scheme so local dev works over http. */
+function originOf(c: any): string {
+    return c.env.APP_BASE_URL || new URL(c.req.url).origin;
+}
+
+/**
+ * Split an amount across weighted entries, giving the leftover paise to the
+ * largest fractional remainders so the parts always sum to `bucket` exactly.
+ */
+function allocateByWeight(
+    entries: { id: string; weight: number }[],
+    bucket: number,
+    totalWeight: number,
+): Map<string, number> {
+    const result = new Map<string, number>();
+    if (entries.length === 0 || totalWeight <= 0) return result;
+    let allocated = 0;
+    const remainders: { id: string; remainder: number }[] = [];
+    for (const entry of entries) {
+        const exact = bucket * entry.weight;
+        const value = Math.floor(exact / totalWeight);
+        result.set(entry.id, value);
+        allocated += value;
+        remainders.push({ id: entry.id, remainder: exact % totalWeight });
+    }
+    let leftover = bucket - allocated;
+    remainders.sort((a, b) => b.remainder - a.remainder);
+    for (const item of remainders) {
+        if (leftover <= 0) break;
+        result.set(item.id, (result.get(item.id) ?? 0) + 1);
+        leftover -= 1;
+    }
+    return result;
+}
+
+/** One logical expense per parent_id; multi-payer rows are stored as siblings. */
+function groupExpenseRows(expenses: Row[]): Map<string, Row[]> {
+    const grouped = new Map<string, Row[]>();
+    for (const expense of expenses) {
+        const key = String(expense.parent_id ?? expense.id);
+        const list = grouped.get(key) ?? [];
+        list.push(expense);
+        grouped.set(key, list);
+    }
+    return grouped;
 }
 
 class HttpError extends Error {
@@ -329,7 +425,7 @@ app.post("/groups/:groupId/invite-email", async (c) => {
     }
     const [inviter] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", userId);
     const [group] = await rows<GroupRow>(c, "SELECT name FROM groups WHERE id = ?", groupId);
-    const link = `${c.env.APP_BASE_URL ?? `https://${c.req.header("host")}`}/invite/${groupId}`;
+    const link = `${originOf(c)}/invite/${groupId}`;
     const inviterName = inviter?.name ?? "A friend";
     const html = `
       <p>${inviterName} added you to <b>${group.name}</b> on teramera — split expenses with friends.</p>
@@ -350,7 +446,7 @@ app.post("/groups/:groupId/invite-email", async (c) => {
 /** Public landing for invite links. */
 app.get("/invite/:groupId", async (c) => {
     const groupId = c.req.param("groupId");
-    const origin = c.env.APP_BASE_URL || `https://${c.req.header("host")}`;
+    const origin = originOf(c);
     const apkUrl = c.env.APK_DOWNLOAD_URL || `${origin}/teramera.apk`;
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -476,11 +572,14 @@ async function groupBalances(c: any, groupId: string): Promise<{ userId: string;
              WHERE expense_id IN (${expenses.map(() => "?").join(",")})`,
             ...expenses.map((e) => e.id),
         );
-        const paidBy = new Map(expenses.map((e) => [e.id, e]));
-        for (const share of shares) {
-            const expense = paidBy.get(share.expense_id);
-            if (!expense) continue;
+        // Count each payment exactly once — adding it inside the share loop would
+        // multiply a payer's credit by their number of participants.
+        for (const expense of expenses) {
             net.set(expense.paid_by_user_id, (net.get(expense.paid_by_user_id) ?? 0) + expense.amount_minor);
+        }
+        const knownExpense = new Set(expenses.map((e) => e.id));
+        for (const share of shares) {
+            if (!knownExpense.has(share.expense_id)) continue;
             net.set(share.user_id, (net.get(share.user_id) ?? 0) - share.share_amount_minor);
         }
     }
@@ -536,16 +635,26 @@ app.get("/groups/:groupId/detail", async (c) => {
         sharesByExpense.set(s.expense_id, list);
     }
 
-    const expenseList = expenses.map((expense) => {
-        const expenseShares = sharesByExpense.get(expense.id) ?? [];
+    // Multi-payer expenses are stored as sibling rows sharing parent_id. The
+    // screen must show one row per *logical* expense, not one per payer.
+    const expenseList = [...groupExpenseRows(expenses).entries()].map(([parentId, logicalRows]) => {
+        const first = logicalRows[0];
+        const logicalShares = logicalRows.flatMap((row) => sharesByExpense.get(row.id) ?? []);
+        const participants = new Set(logicalShares.map((s) => s.user_id));
+        const payers = new Set(logicalRows.map((row) => row.paid_by_user_id));
         return {
-            id: expense.id,
-            title: expense.title,
-            paidByUserId: expense.paid_by_user_id,
-            amountMinor: expense.amount_minor,
-            myShareMinor: expenseShares.find((s) => s.user_id === userId)?.share_amount_minor ?? 0,
-            participantCount: expenseShares.length,
-            createdAt: expense.created_at,
+            id: first.id,
+            parentId,
+            title: first.title,
+            paidByUserId: first.paid_by_user_id,
+            payerCount: payers.size,
+            splitType: first.split_type,
+            amountMinor: logicalRows.reduce((acc, row) => acc + row.amount_minor, 0),
+            myShareMinor: logicalShares
+                .filter((s) => s.user_id === userId)
+                .reduce((acc, s) => acc + s.share_amount_minor, 0),
+            participantCount: participants.size,
+            createdAt: first.created_at,
         };
     });
 
@@ -574,6 +683,7 @@ app.get("/groups/:groupId/detail", async (c) => {
         expenses: expenseList,
         balances: namedBalances,
         simplifiedDebts: namedDebts,
+        worstCasePayments: simplified.worstCaseCount,
     });
 });
 
@@ -586,19 +696,36 @@ app.get("/groups/:groupId/expenses", async (c) => {
         "SELECT * FROM expenses WHERE group_id = ? ORDER BY created_at DESC",
         groupId,
     );
-    const result = [];
-    for (const expense of expenses) {
-        const shares = await rows<Row>(c, "SELECT * FROM expense_shares WHERE expense_id = ?", expense.id);
-        result.push({
-            id: expense.id,
-            title: expense.title,
-            paidByUserId: expense.paid_by_user_id,
-            amountMinor: expense.amount_minor,
-            myShareMinor: shares.find((s) => s.user_id === userId)?.share_amount_minor ?? 0,
-            createdAt: expense.created_at,
-        });
+    if (expenses.length === 0) return c.json([]);
+    const shares = await rows<Row>(
+        c,
+        `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
+         WHERE expense_id IN (${expenses.map(() => "?").join(",")})`,
+        ...expenses.map((e) => e.id),
+    );
+    const sharesByExpense = new Map<string, Row[]>();
+    for (const s of shares) {
+        const list = sharesByExpense.get(s.expense_id) ?? [];
+        list.push(s);
+        sharesByExpense.set(s.expense_id, list);
     }
-    return c.json(result);
+    return c.json([...groupExpenseRows(expenses).entries()].map(([parentId, logicalRows]) => {
+        const first = logicalRows[0];
+        const logicalShares = logicalRows.flatMap((row) => sharesByExpense.get(row.id) ?? []);
+        return {
+            id: first.id,
+            parentId,
+            title: first.title,
+            paidByUserId: first.paid_by_user_id,
+            payerCount: new Set(logicalRows.map((row) => row.paid_by_user_id)).size,
+            amountMinor: logicalRows.reduce((acc, row) => acc + row.amount_minor, 0),
+            myShareMinor: logicalShares
+                .filter((s) => s.user_id === userId)
+                .reduce((acc, s) => acc + s.share_amount_minor, 0),
+            participantCount: new Set(logicalShares.map((s) => s.user_id)).size,
+            createdAt: first.created_at,
+        };
+    }));
 });
 
 // ---------- expenses ----------
@@ -611,14 +738,17 @@ app.post("/expenses", async (c) => {
         amountMinor?: number;
         paidByUserId?: string;
         splitType?: SplitType;
-        participants?: Record<string, number> | string[];
+        /** raw values keyed by user — EXACT (paise), PERCENT, SHARES */
+        participants?: Record<string, number>;
+        /** explicit participant list, used by EQUAL splits */
+        participantIds?: string[];
         payments?: { userId: string; amountMinor: number }[];
         currency?: string;
         fxRateToGroup?: number;
     }>();
 
     if (!body.title?.trim()) return jsonError(c, 400, "title is required");
-    if (!body.amountMinor || body.amountMinor <= 0) return jsonError(c, 400, "Amount must be positive");
+    if (!isPositiveInteger(body.amountMinor)) return jsonError(c, 400, "Amount must be a positive whole number of paise");
     const ALLOWED_TYPES: SplitType[] = ["EQUAL", "EXACT", "PERCENT", "SHARES"];
     if (!body.splitType || !ALLOWED_TYPES.includes(body.splitType)) {
         return jsonError(c, 400, "splitType must be EQUAL, EXACT, PERCENT or SHARES");
@@ -626,7 +756,12 @@ app.post("/expenses", async (c) => {
     if (body.groupId) await requireMember(c, body.groupId, userId);
 
     // ---- payers: payments[] wins over legacy single paidByUserId ----
-    let payments = (body.payments ?? []).filter((p) => p.userId && p.amountMinor > 0);
+    for (const payment of body.payments ?? []) {
+        if (!payment?.userId || !isPositiveInteger(payment.amountMinor)) {
+            return jsonError(c, 400, "Each payer needs a userId and a positive amount");
+        }
+    }
+    let payments = body.payments ?? [];
     if (payments.length === 0) {
         if (!body.paidByUserId) return jsonError(c, 400, "paidByUserId or payments is required");
         payments = [{ userId: body.paidByUserId, amountMinor: body.amountMinor }];
@@ -636,10 +771,10 @@ app.post("/expenses", async (c) => {
         return jsonError(c, 400, "Payer amounts do not sum to the total");
     }
 
-    // ---- participants: array of ids | legacy map | default all group members ----
+    // ---- participants: explicit ids | raw-value map | default all group members ----
     let participantIds: string[];
-    if (Array.isArray(body.participants)) {
-        participantIds = body.participants.filter(Boolean);
+    if (Array.isArray(body.participantIds)) {
+        participantIds = body.participantIds.filter(Boolean);
     } else if (body.participants && Object.keys(body.participants).length > 0) {
         participantIds = [...Object.keys(body.participants), ...payments.map((p) => p.userId)];
     } else if (body.groupId) {
@@ -657,20 +792,22 @@ app.post("/expenses", async (c) => {
         const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", pid);
         if (exists.length === 0) return jsonError(c, 400, `Unknown user: ${pid}`);
     }
-    // all payers of a group expense must be members
+    // everyone involved in a group expense must be a member of that group
     if (body.groupId) {
         const memberRows = await rows<{ user_id: string }>(
             c, "SELECT user_id FROM memberships WHERE group_id = ?", body.groupId,
         );
         const memberSet = new Set(memberRows.map((r) => r.user_id));
+        for (const pid of participantIds) {
+            if (!memberSet.has(pid)) return jsonError(c, 403, `Participant is not a group member: ${pid}`);
+        }
         for (const p of payments) {
             if (!memberSet.has(p.userId)) return jsonError(c, 403, `Payer is not a group member: ${p.userId}`);
         }
     }
 
     // ---- total share per participant, then allocate each payment pro-rata ----
-    const rawValues: Record<string, number> =
-        !Array.isArray(body.participants) && body.participants ? body.participants : {};
+    const rawValues: Record<string, number> = body.participants ?? {};
     const totalSplit = computeSplit({
         type: body.splitType,
         totalMinor: body.amountMinor,
@@ -680,25 +817,12 @@ app.post("/expenses", async (c) => {
     if (!totalSplit.ok) return jsonError(c, 400, totalSplit.reason);
     const totalShares = totalSplit.shares;
 
-    function largestRemainderAllocate(bucket: number): Map<string, number> {
-        const base = new Map<string, number>();
-        let allocated = 0;
-        for (const share of totalShares) {
-            const v = Math.floor((bucket * share.amountMinor) / body.amountMinor!);
-            base.set(share.userId, v);
-            allocated += v;
-        }
-        let remainder = bucket - allocated;
-        const order = [...totalShares].sort((a, b) =>
-            ((bucket * b.amountMinor) % body.amountMinor!) - ((bucket * a.amountMinor) % body.amountMinor!),
+    const allocatePayment = (bucket: number) =>
+        allocateByWeight(
+            totalShares.map((share) => ({ id: share.userId, weight: share.amountMinor })),
+            bucket,
+            body.amountMinor!,
         );
-        for (const share of order) {
-            if (remainder <= 0) break;
-            base.set(share.userId, (base.get(share.userId) ?? 0) + 1);
-            remainder--;
-        }
-        return base;
-    }
 
     const createdAt = Date.now();
     // one shared parent id ties the per-payment rows of a logical expense together
@@ -708,7 +832,7 @@ app.post("/expenses", async (c) => {
         const id = crypto.randomUUID();
         const allocation = payments.length === 1
             ? new Map(totalShares.map((s) => [s.userId, s.amountMinor]))
-            : largestRemainderAllocate(payment.amountMinor);
+            : allocatePayment(payment.amountMinor);
         await run(
             c,
             `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at, parent_id)
@@ -769,63 +893,121 @@ app.patch("/expenses/:expenseId", async (c) => {
     );
     if (first?.paid_by_user_id !== userId) return jsonError(c, 403, "Only the person who added this expense can edit it");
 
-    const body = await c.req.json<{ title?: string; amountMinor?: number; participantIds?: string[] }>();
-    const title = body.title?.trim() ?? expense.title;
+    const body = await c.req.json<{
+        title?: string;
+        amountMinor?: number;
+        participantIds?: string[];
+        splitType?: SplitType;
+        participants?: Record<string, number>;
+    }>();
+    const title = body.title?.trim() ?? siblings[0].title;
     if (!title) return jsonError(c, 400, "title is required");
-    const totalMinor = body.amountMinor ?? siblingTotal(siblings.length, expense.amount_minor);
-    if (totalMinor <= 0) return jsonError(c, 400, "Amount must be positive");
+    const totalMinor = body.amountMinor ?? siblings.reduce((acc, row) => acc + row.amount_minor, 0);
+    if (!isPositiveInteger(totalMinor)) return jsonError(c, 400, "Amount must be a positive whole number of paise");
 
-    let participantIds: string[] | null = null;
-    if (body.participantIds && body.participantIds.length > 0) {
-        participantIds = [...new Set(body.participantIds.filter(Boolean))];
+    const ALLOWED_TYPES: SplitType[] = ["EQUAL", "EXACT", "PERCENT", "SHARES"];
+    // A plain title/amount edit keeps each person's slice of the pie; only an
+    // explicit split change recomputes the shares from scratch.
+    const wantsResplit =
+        body.splitType !== undefined ||
+        body.participants !== undefined ||
+        (body.participantIds?.length ?? 0) > 0;
+
+    // Participants: an explicit list or raw-value map wins, else keep whoever was split.
+    const siblingIds = siblings.map((s) => s.id);
+    const existingShares = await rows<Row>(
+        c,
+        `SELECT user_id, share_amount_minor FROM expense_shares WHERE expense_id IN (${siblingIds.map(() => "?").join(",")})`,
+        ...siblingIds,
+    );
+    let participantIds: string[] = (body.participantIds ?? []).filter(Boolean);
+    if (participantIds.length === 0 && body.participants) {
+        participantIds = Object.keys(body.participants);
+    }
+    if (participantIds.length === 0) {
+        participantIds = existingShares.map((s) => s.user_id as string);
+    }
+    participantIds = [...new Set(participantIds)];
+    if (participantIds.length < 2) return jsonError(c, 400, "At least two people required");
+
+    for (const pid of participantIds) {
+        const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", pid);
+        if (exists.length === 0) return jsonError(c, 400, `Unknown user: ${pid}`);
+    }
+    if (expense.group_id) {
+        const memberRows = await rows<{ user_id: string }>(
+            c, "SELECT user_id FROM memberships WHERE group_id = ?", expense.group_id,
+        );
+        const memberSet = new Set(memberRows.map((r) => r.user_id));
         for (const pid of participantIds) {
-            const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", pid);
-            if (exists.length === 0) return jsonError(c, 400, `Unknown user: ${pid}`);
+            if (!memberSet.has(pid)) return jsonError(c, 403, `Participant is not a group member: ${pid}`);
         }
     }
 
-    // re-split EQUAL across participants (or keep existing shares when unchanged)
-    let shares: { user_id: string; share_amount_minor: number }[];
-    if (participantIds && participantIds.length >= 2) {
-        const split = computeSplit({ type: "EQUAL", totalMinor, participants: participantIds, rawValues: {} });
+    let targetShares: { userId: string; amountMinor: number }[];
+    if (wantsResplit) {
+        const splitType: SplitType = body.splitType ?? (siblings[0].split_type as SplitType) ?? "EQUAL";
+        if (!ALLOWED_TYPES.includes(splitType)) return jsonError(c, 400, "Invalid split type");
+        const split = computeSplit({
+            type: splitType,
+            totalMinor,
+            participants: participantIds,
+            rawValues: body.participants ?? {},
+        });
         if (!split.ok) return jsonError(c, 400, split.reason);
-        shares = split.shares.map((s) => ({ user_id: s.userId, share_amount_minor: s.amountMinor }));
+        targetShares = split.shares;
     } else {
-        const existing = await rows<Row>(c, "SELECT user_id, share_amount_minor FROM expense_shares WHERE expense_id = ?", expenseId);
-        const oldTotal = existing.reduce((a, r) => a + r.share_amount_minor, 0);
-        shares = existing.map((r) => ({ user_id: r.user_id, share_amount_minor: Math.floor((r.share_amount_minor * totalMinor) / oldTotal) }));
-        // distribute rounding remainder to the first participant
-        const diff = totalMinor - shares.reduce((a, s) => a + s.share_amount_minor, 0);
-        if (shares.length > 0 && diff !== 0) shares[0].share_amount_minor += diff;
+        const perUser = new Map<string, number>();
+        for (const share of existingShares) {
+            const uid = share.user_id as string;
+            perUser.set(uid, (perUser.get(uid) ?? 0) + (share.share_amount_minor as number));
+        }
+        const oldShareTotal = [...perUser.values()].reduce((acc, value) => acc + value, 0);
+        if (oldShareTotal > 0) {
+            const scaled = allocateByWeight(
+                [...perUser.entries()].map(([id, weight]) => ({ id, weight })),
+                totalMinor,
+                oldShareTotal,
+            );
+            targetShares = [...scaled.entries()].map(([userId, amountMinor]) => ({ userId, amountMinor }));
+        } else {
+            const split = computeSplit({ type: "EQUAL", totalMinor, participants: participantIds, rawValues: {} });
+            if (!split.ok) return jsonError(c, 400, split.reason);
+            targetShares = split.shares;
+        }
     }
-    if (shares.length < 2) return jsonError(c, 400, "At least two people required");
 
-    const perPayer = Math.floor(totalMinor / siblings.length);
-    let remainder = totalMinor - perPayer * siblings.length;
+    // Keep each payer's share of the total proportional to what they originally
+    // fronted, then re-allocate the new split across those payer rows.
+    const oldTotal = siblings.reduce((acc, row) => acc + row.amount_minor, 0);
+    const payerAmounts = allocateByWeight(
+        siblings.map((row) => ({ id: row.id, weight: row.amount_minor })),
+        totalMinor,
+        oldTotal,
+    );
     for (const sib of siblings) {
-        const amount = perPayer + (remainder-- > 0 ? 1 : 0);
-        await run(
-            c,
-            "UPDATE expenses SET title = ?, amount_minor = ? WHERE id = ?",
-            title, amount, sib.id,
-        );
+        const payerAmount = payerAmounts.get(sib.id) ?? 0;
+        await run(c, "UPDATE expenses SET title = ?, amount_minor = ? WHERE id = ?", title, payerAmount, sib.id);
         await run(c, "DELETE FROM expense_shares WHERE expense_id = ?", sib.id);
-        for (const share of shares) {
-            if (share.share_amount_minor > 0) {
+        const allocation = siblings.length === 1
+            ? new Map(targetShares.map((s) => [s.userId, s.amountMinor]))
+            : allocateByWeight(
+                targetShares.map((s) => ({ id: s.userId, weight: s.amountMinor })),
+                payerAmount,
+                totalMinor,
+            );
+        for (const [uid, minor] of allocation.entries()) {
+            if (minor > 0) {
                 await run(
                     c,
                     "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) VALUES (?, ?, ?)",
-                    sib.id, share.user_id, share.share_amount_minor,
+                    sib.id, uid, minor,
                 );
             }
         }
     }
     return c.json({ status: "updated", id: expenseId, amountMinor: totalMinor });
 });
-
-function siblingTotal(count: number, singleAmount: number): number {
-    return count > 0 ? singleAmount * count : singleAmount;
-}
 
 app.delete("/expenses/:expenseId", async (c) => {
     const userId = c.get("userId");
@@ -863,15 +1045,27 @@ app.post("/settlements", async (c) => {
     }>();
 
     if (!body.paidToUserId) return jsonError(c, 400, "paidToUserId is required");
-    if (!body.amountMinor || body.amountMinor <= 0) return jsonError(c, 400, "Amount must be positive");
+    if (!isPositiveInteger(body.amountMinor)) return jsonError(c, 400, "Amount must be a positive whole number of paise");
     if (!body.method || !METHODS.has(body.method.toUpperCase())) {
         return jsonError(c, 400, "Method must be UPI, CASH or BANK");
     }
     const payer = body.payerUserId || userId;
+    if (payer === body.paidToUserId) return jsonError(c, 400, "Payer and payee must be different people");
     if (payer !== userId && body.paidToUserId !== userId) {
         return jsonError(c, 403, "You must be part of the settlement");
     }
-    if (body.groupId) await requireMember(c, body.groupId, userId);
+    const knownUsers = await rows<{ id: string }>(
+        c, "SELECT id FROM users WHERE id IN (?, ?)", payer, body.paidToUserId,
+    );
+    if (knownUsers.length !== 2) return jsonError(c, 400, "Unknown payer or payee");
+    if (body.groupId) {
+        await requireMember(c, body.groupId, userId);
+        const members = await rows<{ user_id: string }>(
+            c, "SELECT user_id FROM memberships WHERE group_id = ? AND user_id IN (?, ?)",
+            body.groupId, payer, body.paidToUserId,
+        );
+        if (members.length !== 2) return jsonError(c, 403, "Both people must be group members");
+    }
 
     await run(
         c,
@@ -987,45 +1181,62 @@ app.get("/activity", async (c) => {
          ORDER BY e.created_at DESC LIMIT ?`,
         selfId, selfId, limit,
     );
-    const expenseEvents = [];
-    for (const expense of expenses) {
-        const shares = await rows<Row>(c, "SELECT user_id, share_amount_minor FROM expense_shares WHERE expense_id = ?", expense.id);
-        const [payer] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", expense.paid_by_user_id);
-        let groupName: string | null = null;
-        if (expense.group_id) {
-            const [g] = await rows<{ name: string }>(c, "SELECT name FROM groups WHERE id = ?", expense.group_id);
-            groupName = g?.name ?? null;
-        }
-        // multi-payer rows share one logical expense; show it once with its full amount
-        const parentId = expense.parent_id ?? expense.id;
-        const [agg] = await rows<{ n: number; t: number }>(
-            c,
-            "SELECT COUNT(*) AS n, SUM(amount_minor) AS t FROM expenses WHERE parent_id = ?",
-            parentId,
-        );
-        const rowCount = agg?.n ?? 1;
-        if (rowCount > 1) {
-            const [first] = await rows<{ id: string }>(
-                c,
-                "SELECT id FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
-                parentId,
-            );
-            if (first?.id !== expense.id) continue;
-        }
-        const logicalTotal = rowCount > 1 ? agg?.t ?? expense.amount_minor : expense.amount_minor;
-        expenseEvents.push({
-            type: "expense" as const,
-            id: expense.id,
-            title: expense.title,
-            payerName: payer?.name ?? "?",
-            paidBySelf: expense.paid_by_user_id === selfId,
-            amountMinor: logicalTotal,
-            myShareMinor: shares.find((s) => s.user_id === selfId)?.share_amount_minor ?? 0,
-            groupName,
-            participantCount: shares.length,
-            createdAt: expense.created_at,
-        });
+    // One event per logical expense. Shares, payer names and group names are
+    // batched so a page of activity costs four queries, not four per row.
+    const expenseIds = expenses.map((e) => e.id);
+    const shares = expenseIds.length > 0
+        ? await rows<Row>(
+              c,
+              `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
+               WHERE expense_id IN (${expenseIds.map(() => "?").join(",")})`,
+              ...expenseIds,
+          )
+        : [];
+    const sharesByExpense = new Map<string, Row[]>();
+    for (const share of shares) {
+        const list = sharesByExpense.get(share.expense_id) ?? [];
+        list.push(share);
+        sharesByExpense.set(share.expense_id, list);
     }
+
+    const payerIds = [...new Set(expenses.map((e) => e.paid_by_user_id as string))];
+    const payerRows = payerIds.length > 0
+        ? await rows<UserRow>(
+              c,
+              `SELECT id, name FROM users WHERE id IN (${payerIds.map(() => "?").join(",")})`,
+              ...payerIds,
+          )
+        : [];
+    const payerNameById = new Map(payerRows.map((u) => [u.id, u.name]));
+
+    const groupIds = [...new Set(expenses.map((e) => e.group_id).filter(Boolean) as string[])];
+    const groupRows = groupIds.length > 0
+        ? await rows<{ id: string; name: string }>(
+              c,
+              `SELECT id, name FROM groups WHERE id IN (${groupIds.map(() => "?").join(",")})`,
+              ...groupIds,
+          )
+        : [];
+    const groupNameById = new Map(groupRows.map((g) => [g.id, g.name]));
+
+    const expenseEvents = [...groupExpenseRows(expenses).entries()].map(([, logicalRows]) => {
+        const first = logicalRows[0];
+        const logicalShares = logicalRows.flatMap((row) => sharesByExpense.get(row.id) ?? []);
+        return {
+            type: "expense" as const,
+            id: first.id,
+            title: first.title,
+            payerName: payerNameById.get(first.paid_by_user_id) ?? "?",
+            paidBySelf: logicalRows.some((row) => row.paid_by_user_id === selfId),
+            amountMinor: logicalRows.reduce((acc, row) => acc + row.amount_minor, 0),
+            myShareMinor: logicalShares
+                .filter((s) => s.user_id === selfId)
+                .reduce((acc, s) => acc + s.share_amount_minor, 0),
+            groupName: first.group_id ? groupNameById.get(first.group_id) ?? null : null,
+            participantCount: new Set(logicalShares.map((s) => s.user_id)).size,
+            createdAt: first.created_at,
+        };
+    });
 
     const settlements = await rows<Row>(
         c,

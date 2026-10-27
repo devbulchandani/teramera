@@ -24,6 +24,13 @@ opendesign/index.html
 # misc
 *.log
 
+# local worker secrets + D1 dev state
+worker/.dev.vars
+worker/.wrangler/
+worker/node_modules/
+.dev.vars
+.wrangler/
+
 # personal scratch scripts
 scratch/
 .idea/deviceManager.xml

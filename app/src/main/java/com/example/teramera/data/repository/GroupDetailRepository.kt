@@ -10,6 +10,7 @@ data class ExpenseLine(
     val id: String,
     val title: String,
     val payerName: String,
+    val payerCount: Int = 1,
     val amountMinor: Long,
     val myShareMinor: Long,
     val participantCount: Int,
@@ -27,6 +28,7 @@ data class DebtTransfer(
 data class GroupDetail(
     val groupId: String,
     val groupName: String,
+    val selfUserId: String,
     val memberInitials: List<Pair<String, Boolean>>, // initials to isSelf
     val memberIds: List<String>,
     val totalSpentMinor: Long,
@@ -58,18 +60,24 @@ class GroupDetailRepository @Inject constructor(
             val memberIds = members.map { it.userId }
             val sharesByExpense = shares.groupBy { it.expenseId }
 
-            val lines = expenses.map { expense ->
-                val expenseShares = sharesByExpense[expense.id].orEmpty()
-                ExpenseLine(
-                    id = expense.id.toString(),
-                    title = expense.title,
-                    payerName = usersById[expense.paidByUserId]?.name ?: "?",
-                    amountMinor = expense.amountMinor,
-                    myShareMinor = expenseShares.firstOrNull { it.userId == selfId }?.amountMinor ?: 0L,
-                    participantCount = expenseShares.size,
-                    createdAt = expense.createdAt,
-                )
-            }
+            // multi-payer expenses are several rows sharing a parentId — show one line each
+            val lines = expenses
+                .groupBy { it.parentId ?: it.id.toString() }
+                .map { (_, rows) ->
+                    val first = rows.first()
+                    val rowShares = rows.flatMap { sharesByExpense[it.id].orEmpty() }
+                    ExpenseLine(
+                        id = first.id.toString(),
+                        title = first.title,
+                        payerName = usersById[first.paidByUserId]?.name ?: "?",
+                        payerCount = rows.map { it.paidByUserId }.distinct().size,
+                        amountMinor = rows.sumOf { it.amountMinor },
+                        myShareMinor = rowShares.filter { it.userId == selfId }.sumOf { it.amountMinor },
+                        participantCount = rowShares.map { it.userId }.distinct().size,
+                        createdAt = first.createdAt,
+                    )
+                }
+                .sortedByDescending { it.createdAt }
 
             // net[m] = how much m has overpaid (positive, is owed) or underpaid (negative, owes)
             val net = memberIds.associateWith { 0L }.toMutableMap()
@@ -87,6 +95,7 @@ class GroupDetailRepository @Inject constructor(
             GroupDetail(
                 groupId = group.id,
                 groupName = group.name,
+                selfUserId = selfId,
                 memberInitials = memberIds.map { id ->
                     initials(nameOf(id)) to (id == selfId)
                 },

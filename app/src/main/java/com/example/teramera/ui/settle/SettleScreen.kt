@@ -193,6 +193,7 @@ fun SettleScreen(
             draft = draft,
             saving = state.saving,
             saved = state.saved,
+            error = state.error,
             upiWillLaunch = upiWillLaunch,
             onFull = viewModel::setFull,
             onHalf = viewModel::setHalf,
@@ -241,6 +242,7 @@ private fun SettleSheet(
     draft: SettleDraft,
     saving: Boolean,
     saved: Boolean,
+    error: String?,
     upiWillLaunch: Boolean,
     onFull: () -> Unit,
     onHalf: () -> Unit,
@@ -285,6 +287,15 @@ private fun SettleSheet(
                 SectionLabel("How did you pay?")
                 PaymentMethod.entries.forEach { method ->
                     MethodRow(method = method, selected = draft.method == method, onSelect = onMethod)
+                }
+
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
                 }
 
                 Button(

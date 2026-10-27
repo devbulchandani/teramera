@@ -11,6 +11,7 @@ data class AuthTokensDto(
 
 data class AuthRefreshRequestDto(val refreshToken: String)
 data class GoogleLoginRequestDto(val idToken: String)
+data class LogoutRequestDto(val refreshToken: String)
 
 interface AuthApi {
     @POST("auth/google")
@@ -18,4 +19,7 @@ interface AuthApi {
 
     @POST("auth/refresh")
     suspend fun refresh(@Body body: AuthRefreshRequestDto): AuthTokensDto
+
+    @POST("auth/logout")
+    suspend fun logout(@Body body: LogoutRequestDto)
 }
