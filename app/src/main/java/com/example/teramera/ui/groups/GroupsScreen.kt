@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.data.repository.BalanceEntry
+import com.example.teramera.ui.components.EmptyState
 import com.example.teramera.ui.home.formatInr
 
 @Composable
@@ -68,7 +69,7 @@ fun GroupsScreen(
             )
         }
 
-        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)) {
+        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 88.dp)) {
             items(state.groups, key = { it.id }) { group ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -86,7 +87,7 @@ fun GroupsScreen(
                     ) {
                         androidx.compose.material3.Text(
                             group.initials,
-                            color = androidx.compose.ui.graphics.Color.White,
+                            color = MaterialTheme.colorScheme.onSecondary,
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.align(Alignment.Center),
                         )
@@ -110,11 +111,11 @@ fun GroupsScreen(
             }
             if (state.groups.isEmpty()) {
                 item {
-                    Text(
-                        "No groups yet. Create one to start splitting.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(20.dp),
+                    EmptyState(
+                        title = "No groups yet",
+                        message = "Create a group and invite the people you split with.",
+                        actionLabel = "New group",
+                        onAction = { showCreate = true },
                     )
                 }
             }

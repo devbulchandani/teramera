@@ -1,12 +1,30 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
-#
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
+# teramera — R8 keep rules
+# AGP combines every file in src/main/keepRules for R8.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Kotlin metadata is read reflectively by Moshi's KotlinJsonAdapterFactory.
+-keep class kotlin.Metadata { *; }
+-keepattributes Signature, InnerClasses, RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations, AnnotationDefault, *Annotation*
+
+# Moshi reflection: keep DTOs and their fields intact (names are the JSON keys).
+-keep class com.example.teramera.core.network.** { *; }
+-keepclassmembers class com.example.teramera.core.network.** { <fields>; }
+-keepnames class com.example.teramera.core.network.**
+
+# Retrofit builds implementations from these interfaces at runtime.
+-keep,allowobfuscation,allowshrinking interface com.example.teramera.core.network.AuthApi
+-keep,allowobfuscation,allowshrinking interface com.example.teramera.core.network.LedgerApi
+
+# Moshi's reflective adapter factory and qualifiers.
+-keep class com.squareup.moshi.** { *; }
+-keep @com.squareup.moshi.JsonQualifier interface *
+-keepclasseswithmembers class * {
+    @com.squareup.moshi.* <methods>;
+}
+-keepclassmembers class * {
+    @com.squareup.moshi.Json <fields>;
+}
+
+# Hilt/AndroidX/Room/Firebase ship their own consumer rules; silence optional deps.
+-dontwarn org.bouncycastle.**
+-dontwarn org.conscrypt.**
+-dontwarn org.openjsse.**

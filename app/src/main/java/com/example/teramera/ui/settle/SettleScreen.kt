@@ -155,7 +155,7 @@ fun SettleScreen(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         )
 
-        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)) {
+        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)) {
             val owedYou = state.balances.filter { it.amountMinor > 0 }
             if (owedYou.isNotEmpty()) {
                 item { SectionLabel("Owes you") }

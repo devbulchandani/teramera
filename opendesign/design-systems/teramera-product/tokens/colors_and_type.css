@@ -73,6 +73,15 @@
   --surface-raised: var(--bg-2);
   --fg-primary: var(--ink-1);
   --fg-secondary: var(--ink-2);
+  /* text/graphics that sit on an accent fill, in every theme */
+  --on-accent: #FBF9F4;
+  /* the inverted hero card flips with the theme, so its foreground must too */
+  --inverse-surface: var(--ink-1);
+  --inverse-ink: var(--bg-1);
+  --inverse-pos: oklch(0.84 0.09 160);
+  --inverse-neg: oklch(0.83 0.10 32);
+  /* the mascot keeps a cream face even on a dark page */
+  --mascot-cream: #FBF9F4;
 }
 
 /* ---- dark theme (deep warm brown-black, not gray) ---- */
@@ -93,6 +102,12 @@
   --neg-soft: oklch(0.31 0.05 35);
   --border-subtle: oklch(0.32 0.018 62);
   --border-strong: oklch(0.42 0.02 62);
+  --on-accent: oklch(0.21 0.015 60);
+  --inverse-surface: oklch(0.945 0.008 85);
+  --inverse-ink: oklch(0.21 0.015 60);
+  --inverse-pos: oklch(0.40 0.09 160);
+  --inverse-neg: oklch(0.50 0.15 32);
+  --mascot-cream: #FBF9F4;
   --shadow-card: none;
   --shadow-float: 0 8px 28px oklch(0 0 0 / 0.4);
 }

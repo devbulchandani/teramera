@@ -12,6 +12,7 @@ import com.example.teramera.core.network.CreateSettlementRequestDto
 import com.example.teramera.core.network.GroupDetailDto
 import com.example.teramera.core.network.LedgerApi
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -68,7 +69,9 @@ class GroupDetailViewModel @Inject constructor(
                     error = error ?: "Couldn't load this group. Check your connection and try again.",
                 )
             }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GroupDetailUiState(loading = true))
+        }
+            .flowOn(kotlinx.coroutines.Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GroupDetailUiState(loading = true))
 
     val addMemberState: StateFlow<AddMemberState> = addMember
 
@@ -276,7 +279,7 @@ class GroupDetailViewModel @Inject constructor(
         expenseEdit.value = ExpenseEditState()
     }
 
-    fun saveExpense(title: String, rupees: Long) {
+    fun saveExpense(title: String, amountMinor: Long) {
         val line = expenseEdit.value.line ?: return
         if (expenseEdit.value.busy) return
         viewModelScope.launch {
@@ -286,7 +289,7 @@ class GroupDetailViewModel @Inject constructor(
                     line.id,
                     com.example.teramera.core.network.UpdateExpenseRequestDto(
                         title = title.trim(),
-                        amountMinor = rupees * 100,
+                        amountMinor = amountMinor,
                     ),
                 )
                 expenseEdit.value = ExpenseEditState()

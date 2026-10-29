@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera — Baanto, the mascot</title>
+<link rel="stylesheet" href="../../design-systems/teramera-product/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg-3);
+    font-family: var(--font-ui);
+    color: var(--ink-1);
+    padding: 48px 24px 96px;
+    transition: background var(--t-med), color var(--t-med);
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  h1 { font-family: var(--font-display); font-size: 40px; font-weight: 800; letter-spacing: -1px; }
+  .lede { color: var(--ink-2); font-size: 15px; line-height: 1.55; max-width: 560px; margin-top: 8px; }
+  .theme-btn {
+    border: 1px solid var(--border-strong); background: var(--bg-2); color: var(--ink-1);
+    font-family: var(--font-ui); font-size: 13px; font-weight: 600;
+    padding: 10px 16px; border-radius: var(--r-pill); cursor: pointer; min-height: 44px;
+  }
+
+  h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 56px 0 6px; }
+  .sub { color: var(--ink-2); font-size: 14px; margin-bottom: 20px; }
+
+  .card { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); }
+
+  /* ---- hero ---- */
+  .hero {
+    display: grid; grid-template-columns: 260px 1fr; gap: 32px; align-items: center;
+    padding: 32px; margin-top: 32px;
+  }
+  .hero .art { display: flex; justify-content: center; }
+  .hero h3 { font-family: var(--font-display); font-size: 30px; font-weight: 800; }
+  .hero .tag { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700;
+    color: var(--accent-1); background: var(--accent-1-soft); padding: 6px 10px; border-radius: var(--r-pill); margin: 10px 0 14px; }
+  .hero p { font-size: 15px; line-height: 1.6; color: var(--ink-2); max-width: 560px; }
+  .hero ul { margin: 16px 0 0 18px; color: var(--ink-2); font-size: 14px; line-height: 1.8; }
+
+  /* ---- states ---- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .state { padding: 24px 16px; text-align: center; }
+  .state .art { height: 132px; display: flex; align-items: center; justify-content: center; }
+  .state h4 { font-size: 14px; font-weight: 700; margin-top: 10px; }
+  .state p { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; line-height: 1.45; }
+  .state .copy { font-size: 12.5px; color: var(--ink-1); margin-top: 10px; font-style: italic; }
+
+  /* ---- sizes ---- */
+  .sizes { display: flex; align-items: flex-end; gap: 40px; flex-wrap: wrap; padding: 32px; }
+  .size { text-align: center; }
+  .size span { display: block; font-size: 11px; color: var(--ink-3); font-family: ui-monospace, monospace; margin-top: 8px; }
+
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(-1.2deg); }
+    50% { transform: translateY(-4px) rotate(1.2deg); }
+  }
+  .float { animation: bob 3.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .float { animation: none; } }
+
+  /* ---- share card ---- */
+  .share-demo { border-radius: var(--r-md); padding: 18px; text-align: center;
+    background: var(--bg-2); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .share-demo .wm { font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: -.6px; }
+  .share-demo .wm .a { color: var(--accent-2); } .share-demo .wm .b { color: var(--accent-1); }
+  .share-demo .ln { font-size: 11.5px; color: var(--ink-2); }
+
+  /* ---- usage ---- */
+  .usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .use { padding: 20px; }
+  .use h4 { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--ink-2); }
+  .empty-demo { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+    border-radius: var(--r-md); background: var(--bg-2); padding: 22px 16px; }
+  .empty-demo .t { font-family: var(--font-display); font-size: 16px; font-weight: 700; }
+  .empty-demo .d { font-size: 12.5px; color: var(--ink-2); }
+  .empty-demo .cta { margin-top: 8px; background: var(--accent-1); color: var(--on-accent); font-size: 12.5px; font-weight: 700;
+    padding: 9px 14px; border-radius: var(--r-pill); min-height: 36px; display: inline-flex; align-items: center; }
+  .login-demo { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; }
+  .login-demo .wordmark { font-family: var(--font-display); font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+  .login-demo .wordmark .tere { color: var(--accent-2); }
+  .login-demo .wordmark .mera { color: var(--accent-1); }
+  .btn-demo { width: 100%; background: var(--accent-1); color: var(--on-accent); font-weight: 700; font-size: 13px;
+    border-radius: var(--r-md); padding: 14px; text-align: center; }
+  .icon-demo { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .appicon { width: 84px; height: 84px; border-radius: 22px; background: #FBF9F4; display: grid; place-items: center;
+    box-shadow: var(--shadow-card); }
+  .appicon.dark { background: oklch(0.21 0.015 60); }
+  .splash { width: 120px; height: 210px; border-radius: 20px; background: #FBF9F4; display: grid; place-items: center;
+    border: 1px solid var(--border-subtle); }
+  .splash.dark { background: oklch(0.21 0.015 60); border-color: oklch(0.32 0.02 60); }
+  .icon-demo small { color: var(--ink-3); font-size: 11px; display: block; text-align: center; margin-top: 6px; }
+
+  /* ---- palette ---- */
+  .palette { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .swatch { border-radius: var(--r-md); padding: 16px; min-height: 96px; display: flex; flex-direction: column; justify-content: flex-end; }
+  .swatch b { font-size: 13px; }
+  .swatch span { font-size: 11px; font-family: ui-monospace, monospace; opacity: 1; }
+  .sw-teal { background: #00848B; color: #FBF9F4; }
+  .sw-violet { background: #825EA9; color: #FBF9F4; }
+  .sw-cream { background: #FBF9F4; color: #251C15; border: 1px solid var(--border-subtle); }
+  .sw-ink { background: #251C15; color: #FBF9F4; }
+
+  /* ---- rules ---- */
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .rule { padding: 20px; }
+  .rule h4 { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+  .rule.do h4 { color: var(--pos); }
+  .rule.dont h4 { color: var(--neg); }
+  .rule ul { margin-left: 18px; font-size: 13.5px; line-height: 1.8; color: var(--ink-2); }
+
+  .motion { padding: 24px; }
+  .motion table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .motion td { padding: 10px 8px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+  .motion td:first-child { font-weight: 600; width: 140px; }
+  .motion td:last-child { font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink-2); }
+
+  @media (max-width: 720px) {
+    .hero { grid-template-columns: 1fr; text-align: center; }
+    .hero ul { text-align: left; }
+    .rules { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Baanto</h1>
+      <p class="lede">The teramera mascot. A split coin spirit — half <b>mera</b>, half <b>tere</b> — who does the maths without ever making money feel like a problem. Quiet companion, not a commentator.</p>
+    </div>
+    <button class="theme-btn" onclick="toggleTheme()">Toggle dark</button>
+  </header>
+
+  <!-- ======= HERO ======= -->
+  <section class="card hero">
+    <div class="art" id="heroArt"></div>
+    <div>
+      <h3>Meet Baanto</h3>
+      <span class="tag">tere | mera</span>
+      <p>A rupee coin that split down the middle and became two friends. The teal half is what you paid; the violet half is what you owe. It is the only character in the product — it shows up when the screen is otherwise empty, and it stays quiet.</p>
+      <ul>
+        <li>Name: <b>Baanto</b> — from <i>baantna</i>, to divide or share.</li>
+        <li>Role: marks empty, loading and confirmation moments.</li>
+        <li>Voice: none. Copy sits beside it, never in its mouth.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ======= STATES ======= -->
+  <h2>States</h2>
+  <p class="sub">Four expressions cover every moment in the app. Nothing else is needed.</p>
+  <div class="grid">
+    <div class="card state">
+      <div class="art" data-mascot="idle"></div>
+      <h4>Neutral</h4>
+      <p>Default. Empty states and first run.</p>
+      <div class="copy">“No expenses yet. Add the first one.”</div>
+    </div>
+    <div class="card state">
+      <div class="art" data-mascot="pleased"></div>
+      <h4>Pleased</h4>
+      <p>Settled, saved, all square.</p>
+      <div class="copy">“All settled. Nice work.”</div>
+    </div>
+    <div class="card state">
+      <div class="art" data-mascot="thinking"></div>
+      <h4>Thinking</h4>
+      <p>Computing a split or syncing.</p>
+      <div class="copy">“Splitting this fairly…”</div>
+    </div>
+    <div class="card state">
+      <div class="art" data-mascot="sorry"></div>
+      <h4>Apologetic</h4>
+      <p>Errors and offline states.</p>
+      <div class="copy">“Couldn’t reach the server. Retrying.”</div>
+    </div>
+  </div>
+
+  <!-- ======= SIZES ======= -->
+  <h2>Sizes</h2>
+  <p class="sub">One drawing, four sizes. Below 32px the coin drops and only the face remains.</p>
+  <div class="card sizes">
+    <div class="size"><span data-mascot="idle" data-size="120"></span><span>120 · empty state</span></div>
+    <div class="size"><span data-mascot="idle" data-size="84"></span><span>84 · login</span></div>
+    <div class="size"><span data-mascot="thinking" data-size="48"></span><span>48 · loading</span></div>
+    <div class="size"><span data-mascot="idle" data-size="28" data-no-coin></span><span>28 · inline, no coin</span></div>
+  </div>
+
+  <!-- ======= USAGE ======= -->
+  <h2>In context</h2>
+  <p class="sub">Mascot-led empty states, login, loading, app icon and splash.</p>
+  <div class="usage">
+    <div class="card use">
+      <h4>Empty state</h4>
+      <div class="empty-demo">
+        <span data-mascot="idle" data-size="96"></span>
+        <div class="t">No groups yet</div>
+        <div class="d">Start one and invite the people you split with.</div>
+        <div class="cta">Create a group</div>
+      </div>
+    </div>
+    <div class="card use">
+      <h4>Login</h4>
+      <div class="login-demo">
+        <span data-mascot="idle" data-size="84"></span>
+        <div class="wordmark"><span class="tere">tere</span><span class="mera">mera</span></div>
+        <div class="d" style="font-size:12.5px;color:var(--ink-2)">Money between friends, split fairly.</div>
+        <div class="btn-demo">Continue with Google</div>
+      </div>
+    </div>
+    <div class="card use">
+      <h4>Loading</h4>
+      <div class="empty-demo" style="padding:34px 16px">
+        <span data-mascot="thinking" data-size="72" class="float"></span>
+        <div class="d">Syncing your balances…</div>
+      </div>
+    </div>
+    <div class="card use">
+      <h4>Share card</h4>
+      <div class="share-demo">
+        <span data-mascot="pleased" data-size="72" data-no-coin></span>
+        <div class="wm"><span class="a">tere</span><span class="b">mera</span></div>
+        <div class="ln">Split fairly. Settle simply.</div>
+      </div>
+    </div>
+    <div class="card use">
+      <h4>App icon &amp; splash</h4>
+      <div class="icon-demo">
+        <div>
+          <div class="appicon"><span data-mascot="idle" data-size="60" data-no-coin></span></div>
+          <small>adaptive icon</small>
+        </div>
+        <div>
+          <div class="appicon dark"><span data-mascot="idle" data-size="60" data-no-coin></span></div>
+          <small>dark</small>
+        </div>
+        <div>
+          <div class="splash"><span data-mascot="idle" data-size="76" data-no-coin></span></div>
+          <small>splash</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= PALETTE ======= -->
+  <h2>Colour</h2>
+  <p class="sub">Only the two brand accents, plus cream for the face so it reads on both halves.</p>
+  <div class="palette">
+    <div class="swatch sw-teal"><b>Mera · teal</b><span>accent-1 · #00848B</span></div>
+    <div class="swatch sw-violet"><b>Tere · violet</b><span>accent-2 · #825EA9</span></div>
+    <div class="swatch sw-cream"><b>Face</b><span>bg-1 · #FBF9F4</span></div>
+    <div class="swatch sw-ink"><b>Outline</b><span>ink-1 · #251C15</span></div>
+  </div>
+
+  <!-- ======= RULES ======= -->
+  <h2>Rules</h2>
+  <div class="rules">
+    <div class="card rule do">
+      <h4>Do</h4>
+      <ul>
+        <li>Keep the split vertical-ish (105°), teal on the left.</li>
+        <li>Use cream for eyes and mouth — never ink on the accents.</li>
+        <li>Let it sit beside copy, aligned to the top third.</li>
+        <li>Animate at most 380ms, spring easing.</li>
+      </ul>
+    </div>
+    <div class="card rule dont">
+      <h4>Don’t</h4>
+      <ul>
+        <li>No gradients across the two hues.</li>
+        <li>No emoji faces, no extra limbs, no blush.</li>
+        <li>Don’t make it talk or judge spending.</li>
+        <li>Don’t place it on busy photography.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ======= MOTION ======= -->
+  <h2>Motion</h2>
+  <div class="card motion">
+    <table>
+      <tr><td>Idle</td><td>2.4° sway, 4s loop, ease-in-out. Coin bobs 2px.</td></tr>
+      <tr><td>Thinking</td><td>Coin orbits the body once per 3s; eyes track it.</td></tr>
+      <tr><td>Pleased</td><td>Single squash-stretch, 380ms spring; coin flips once.</td></tr>
+      <tr><td>Apologetic</td><td>1.5° droop, 200ms; no loop. Coin lowers 4px.</td></tr>
+      <tr><td>Entering</td><td>Fade + 8px rise, 260ms. Never bounces into view.</td></tr>
+      <tr><td>Note</td><td>The 380ms cap applies to transitions; ambient idle/thinking loops are exempt.</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+// One source of truth for the mascot drawing, rendered at any size.
+const COIN = `
+  <g class="coin">
+    <circle cx="163" cy="142" r="17" fill="var(--mascot-cream)" stroke="var(--border-strong)" stroke-width="2.5"/>
+    <text x="163" y="150" text-anchor="middle" font-family="Bricolage Grotesque, serif"
+      font-size="19" font-weight="800" fill="#251C15">₹</text>
+  </g>`;
+
+const FACES = {
+  idle: `
+    <circle cx="79" cy="97" r="6.5" fill="var(--mascot-cream)"/>
+    <circle cx="121" cy="97" r="6.5" fill="var(--mascot-cream)"/>
+    <path d="M86 118 q14 11 28 0" fill="none" stroke="var(--mascot-cream)" stroke-width="5" stroke-linecap="round"/>`,
+  pleased: `
+    <path d="M72 99 q7 -8 14 0" fill="none" stroke="var(--mascot-cream)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M114 99 q7 -8 14 0" fill="none" stroke="var(--mascot-cream)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M82 114 q18 19 36 0" fill="none" stroke="var(--mascot-cream)" stroke-width="5.5" stroke-linecap="round"/>`,
+  thinking: `
+    <circle cx="79" cy="97" r="6.5" fill="var(--mascot-cream)"/>
+    <path d="M114 97 q7 6 14 0" fill="none" stroke="var(--mascot-cream)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M92 122 h16" fill="none" stroke="var(--mascot-cream)" stroke-width="5" stroke-linecap="round"/>
+    <g fill="var(--ink-2)">
+      <circle cx="150" cy="66" r="4"/><circle cx="160" cy="56" r="5.5"/><circle cx="174" cy="44" r="7"/>
+    </g>`,
+  sorry: `
+    <path d="M72 94 q7 7 14 0" fill="none" stroke="var(--mascot-cream)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M114 94 q7 7 14 0" fill="none" stroke="var(--mascot-cream)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M86 126 q14 -11 28 0" fill="none" stroke="var(--mascot-cream)" stroke-width="5" stroke-linecap="round"/>`
+};
+
+let mascotSeq = 0;
+function mascot(state = 'idle', size = 160, withCoin = true) {
+  const uid = `m${++mascotSeq}`;
+  return `<svg viewBox="0 0 200 200" width="${size}" height="${size}" role="img" aria-label="Baanto, ${state}">
+    <defs><clipPath id="clip-${uid}"><circle cx="100" cy="105" r="60"/></clipPath></defs>
+    <g clip-path="url(#clip-${uid})">
+      <rect width="200" height="200" fill="var(--accent-1)"/>
+      <rect x="100" y="-20" width="120" height="260" fill="var(--accent-2)"
+        transform="rotate(-13 100 105)"/>
+    </g>
+    <circle cx="100" cy="105" r="60" fill="none" stroke="var(--mascot-cream)" stroke-opacity=".28" stroke-width="2"/>
+    ${FACES[state] || FACES.idle}
+    ${withCoin ? COIN : ''}
+  </svg>`;
+}
+
+function mount(el) {
+  const state = el.dataset.mascot || 'idle';
+  const size = Number(el.dataset.size || (el.id === 'heroArt' ? 220 : 132));
+  el.innerHTML = mascot(state, size, !('noCoin' in el.dataset));
+  el.style.display = 'inline-flex';
+}
+
+document.querySelectorAll('[data-mascot]').forEach(mount);
+document.getElementById('heroArt').innerHTML = mascot('idle', 220, true);
+
+function toggleTheme() {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === 'dark' ? '' : 'dark';
+}
+</script>
+</body>
+</html>

@@ -3,6 +3,8 @@ package com.example.teramera.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -44,6 +46,8 @@ import com.example.teramera.ui.activity.ActivityScreen
 import com.example.teramera.ui.addexpense.AddExpenseSheet
 import com.example.teramera.ui.auth.LoginScreen
 import com.example.teramera.ui.components.ActivityIcon
+import com.example.teramera.ui.components.Baanto
+import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.components.GroupsIcon
 import com.example.teramera.ui.components.HomeIcon
 import com.example.teramera.ui.components.SettleIcon
@@ -79,7 +83,19 @@ fun AppRoot() {
     androidx.compose.runtime.LaunchedEffect(Unit) { sessionViewModel.checkForUpdate() }
 
     when (loggedIn) {
-        null -> Box(Modifier.fillMaxSize()) // restoring session
+        null -> Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Baanto(state = BaantoState.Thinking, size = 72.dp, animate = true)
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "Loading…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         false -> LoginScreen(onLoggedIn = { /* isLoggedIn flow flips the gate */ })
         true -> MainApp(loggedIn, sessionViewModel)
     }
@@ -123,7 +139,6 @@ class SessionViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {
             syncRepository.refreshNow()
-            _availableUpdate.value = updateManager.checkForUpdate(BuildConfig.VERSION_CODE)
             registerPushToken()
         }
     }
@@ -217,40 +232,65 @@ private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
     var showAddExpense by rememberSaveable { mutableStateOf(false) }
     var addExpenseGroupId by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val navItems = listOf(
-        NavItem(Routes.HOME, "Home") { tint -> HomeIcon(tint = tint) },
-        NavItem(Routes.GROUPS, "Groups") { tint -> GroupsIcon(tint = tint) },
-        NavItem(Routes.ACTIVITY, "Activity") { tint -> ActivityIcon(tint = tint) },
-        NavItem(Routes.SETTLE, "Settle") { tint -> SettleIcon(tint = tint) },
-    )
+    val navItems = remember {
+        listOf(
+            NavItem(Routes.HOME, "Home") { tint -> HomeIcon(tint = tint) },
+            NavItem(Routes.GROUPS, "Groups") { tint -> GroupsIcon(tint = tint) },
+            NavItem(Routes.ACTIVITY, "Activity") { tint -> ActivityIcon(tint = tint) },
+            NavItem(Routes.SETTLE, "Settle") { tint -> SettleIcon(tint = tint) },
+        )
+    }
+    val onGroupDetail = currentRoute.startsWith("groups/")
+    fun isSelected(route: String): Boolean = when (route) {
+        // drilling into a group keeps its parent tab highlighted
+        Routes.GROUPS -> currentRoute == Routes.GROUPS || onGroupDetail
+        else -> currentRoute == route
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                navItems.forEach { item ->
-                    NavigationBarItem(
-                        selected = currentRoute == item.route,
-                        onClick = {
-                            navController.navigate(item.route) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { item.icon(MaterialTheme.colorScheme.onSurface) },
-                        label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                        ),
+            // group detail brings its own action bar; two stacked bars waste the screen
+            if (!onGroupDetail) {
+                Column {
+                    androidx.compose.material3.HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 1.dp,
                     )
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                        navItems.forEach { item ->
+                            val selected = isSelected(item.route)
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = {
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                icon = {
+                                    item.icon(
+                                        if (selected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                label = {
+                                    Text(item.label, style = MaterialTheme.typography.labelMedium)
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                ),
+                            )
+                        }
+                    }
                 }
             }
         },
         floatingActionButton = {
-            if (currentRoute == Routes.HOME) {
+            if (currentRoute == Routes.HOME || currentRoute == Routes.GROUPS) {
                 ExtendedFloatingActionButton(
                     onClick = {
                         // a group picked by an earlier group-screen add must not leak in

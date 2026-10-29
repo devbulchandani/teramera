@@ -39,10 +39,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.data.local.PaymentMethod
 import com.example.teramera.data.repository.initials
+import com.example.teramera.core.time.TimeFormat
 import com.example.teramera.ui.home.formatInr
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun GroupDetailScreen(
@@ -396,7 +394,7 @@ private fun ExpenseRow(
         Column(Modifier.weight(1f)) {
             Text(line.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp))
             Text(
-                "paid by ${line.payerName}${if (line.payerCount > 1) " +${line.payerCount - 1}" else ""} · ${line.participantCount} people · ${dateLabel(line.createdAt)}",
+                "paid by ${line.payerName}${if (line.payerCount > 1) " +${line.payerCount - 1}" else ""} · ${line.participantCount} people · ${TimeFormat.dayTime(line.createdAt)}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -417,20 +415,6 @@ private fun shortName(fullName: String): String =
 
 private fun initialsOf(text: String): String =
     text.split(" ").filter { it.isNotBlank() }.take(2).map { it.first().uppercaseChar() }.joinToString("")
-
-private fun dateLabel(epochMillis: Long): String {
-    val cal = java.util.Calendar.getInstance().apply { timeInMillis = epochMillis }
-    val today = java.util.Calendar.getInstance()
-    return when {
-        sameDay(cal, today) -> "Today"
-        sameDay(cal, java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, -1) }) -> "Yesterday"
-        else -> SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(epochMillis))
-    }
-}
-
-private fun sameDay(a: java.util.Calendar, b: java.util.Calendar): Boolean =
-    a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) &&
-        a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
 
 @Composable
 private fun Hairline() {
@@ -652,7 +636,7 @@ private fun methodLabel(method: PaymentMethod): String = when (method) {
 @Composable
 private fun EditExpenseDialog(
     state: GroupDetailViewModel.ExpenseEditState,
-    onSave: (title: String, rupees: Long) -> Unit,
+    onSave: (title: String, amountMinor: Long) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -661,13 +645,17 @@ private fun EditExpenseDialog(
         androidx.compose.runtime.mutableStateOf(line?.title.orEmpty())
     }
     var amountText by androidx.compose.runtime.remember(line) {
-        androidx.compose.runtime.mutableStateOf(line?.amountMinor?.let { (it / 100).toString() }.orEmpty())
+        androidx.compose.runtime.mutableStateOf(
+            line?.amountMinor
+                ?.let { java.math.BigDecimal.valueOf(it, 2).stripTrailingZeros().toPlainString() }
+                .orEmpty()
+        )
     }
     var confirmDelete by androidx.compose.runtime.remember(line) {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    val rupees = amountText.toLongOrNull() ?: 0L
-    val valid = title.isNotBlank() && rupees > 0
+    val amountMinor = parseRupeesToMinor(amountText)
+    val valid = title.isNotBlank() && amountMinor != null && amountMinor > 0
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -690,15 +678,22 @@ private fun EditExpenseDialog(
                     )
                     androidx.compose.material3.OutlinedTextField(
                         value = amountText,
-                        onValueChange = { amountText = it.filter { ch -> ch.isDigit() }.take(9) },
+                        onValueChange = { new ->
+                            // digits plus at most one dot, two decimals
+                            val filtered = new.filter { it.isDigit() || it == '.' }
+                            val dot = filtered.indexOf('.')
+                            amountText = if (dot >= 0 && filtered.length > dot + 3) {
+                                filtered.take(dot + 3)
+                            } else filtered.take(10)
+                        },
                         label = { Text("Amount (₹)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    if (!state.error.isNullOrBlank()) {
-                        Text(state.error, color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall)
-                    }
+                }
+                if (!state.error.isNullOrBlank()) {
+                    Text(state.error, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall)
                 }
             }
         },
@@ -706,12 +701,12 @@ private fun EditExpenseDialog(
             if (confirmDelete) {
                 androidx.compose.material3.TextButton(
                     enabled = !state.busy,
-                    onClick = { onDelete(); onDismiss() },
-                ) { Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+                    onClick = onDelete,
+                ) { Text(if (state.busy) "Deleting…" else "Delete", color = MaterialTheme.colorScheme.error, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
             } else {
                 androidx.compose.material3.TextButton(
                     enabled = valid && !state.busy,
-                    onClick = { onSave(title, rupees) },
+                    onClick = { amountMinor?.let { onSave(title, it) } },
                 ) { Text("Save", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
             }
         },
@@ -728,4 +723,19 @@ private fun EditExpenseDialog(
             }
         },
     )
+}
+
+/** "12.34" -> 1234 minor units. Returns null for anything that isn't valid money. */
+private fun parseRupeesToMinor(text: String): Long? {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return null
+    val parts = trimmed.split('.')
+    if (parts.size > 2) return null
+    val whole = parts[0].ifEmpty { "0" }
+    val fraction = parts.getOrNull(1).orEmpty()
+    if (fraction.length > 2) return null
+    if (whole.any { !it.isDigit() } || fraction.any { !it.isDigit() }) return null
+    val rupees = whole.toLongOrNull() ?: return null
+    val paise = fraction.padEnd(2, '0').toLongOrNull() ?: return null
+    return rupees * 100 + paise
 }

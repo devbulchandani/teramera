@@ -16,6 +16,7 @@ import com.example.teramera.data.repository.SplitResult
 import com.example.teramera.data.repository.SplitType
 import com.example.teramera.data.sync.SyncRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -177,7 +178,9 @@ class AddExpenseViewModel @Inject constructor(
                 membersError = load.error,
                 friendSearch = server.friendSearch,
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddExpenseUiState())
+        }
+            .flowOn(kotlinx.coroutines.Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddExpenseUiState())
 
     /** Called once when the sheet opens so a previous draft never leaks in. */
     fun prepare() {

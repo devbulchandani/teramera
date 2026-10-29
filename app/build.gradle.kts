@@ -47,8 +47,8 @@ android {
         applicationId = "com.example.teramera"
         minSdk = 24
         targetSdk = 37
-        versionCode = 17
-        versionName = "0.4.2"
+        versionCode = 18
+        versionName = "0.4.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -87,10 +87,10 @@ android {
 
     buildTypes {
         release {
-            // R8 stays off: the release build is the debug build, signed with the
-            // upload key. Turn optimization on only after a tested shrinking pass.
+            // R8 + resource shrinking. Keep rules live in src/main/keepRules.
+            // Verify the signed build on a device after changing these.
             optimization {
-                enable = false
+                enable = true
             }
             signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else null
         }

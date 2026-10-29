@@ -118,7 +118,7 @@ app.get("/app/version", (c) => {
     return c.json({
         versionCode: Number(c.env.APP_VERSION_CODE || 1),
         versionName: c.env.APP_VERSION_NAME || "1.0",
-        apkUrl: `${origin}/teramera.apk`,
+        apkUrl: c.env.APK_DOWNLOAD_URL || `${origin}/teramera.apk`,
     });
 });
 
@@ -131,6 +131,33 @@ async function rows<T = Row>(c: any, sql: string, ...params: unknown[]): Promise
 
 async function run(c: any, sql: string, ...params: unknown[]) {
     await c.env.DB.prepare(sql).bind(...params).run();
+}
+
+/** D1 allows at most 100 bound parameters per statement. */
+const D1_PARAM_CAP = 90;
+
+function placeholders(count: number): string {
+    return Array(count).fill("?").join(",");
+}
+
+function chunks<T>(items: T[], size = D1_PARAM_CAP): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+    return out;
+}
+
+/** Runs an IN (...) query in chunks so large groups/feeds never hit the cap. */
+async function rowsByIds<T = Row>(
+    c: any,
+    sqlFor: (count: number) => string,
+    ids: string[],
+    leading: unknown[] = [],
+): Promise<T[]> {
+    const out: T[] = [];
+    for (const part of chunks([...new Set(ids)])) {
+        out.push(...await rows<T>(c, sqlFor(part.length), ...leading, ...part));
+    }
+    return out;
 }
 
 function badRequest(message: string) {
@@ -1117,22 +1144,32 @@ app.get("/balances", async (c) => {
     const selfId = c.get("userId");
     const net = new Map<string, number>();
 
-    const expenses = await rows<Row>(
+    // Two aggregates instead of one query per expense: what others owe me and
+    // what I owe others. /balances stays at a constant number of queries.
+    const owedToMe = await rows<Row>(
         c,
-        `SELECT DISTINCT e.* FROM expenses e
-         LEFT JOIN expense_shares s ON s.expense_id = e.id
-         WHERE e.paid_by_user_id = ? OR s.user_id = ?`,
+        `SELECT s.user_id AS uid, SUM(s.share_amount_minor) AS total
+         FROM expense_shares s
+         JOIN expenses e ON e.id = s.expense_id
+         WHERE e.paid_by_user_id = ? AND s.user_id != ?
+         GROUP BY s.user_id`,
         selfId, selfId,
     );
-    for (const expense of expenses) {
-        const shares = await rows<Row>(c, "SELECT * FROM expense_shares WHERE expense_id = ?", expense.id);
-        for (const share of shares) {
-            if (expense.paid_by_user_id === selfId && share.user_id !== selfId) {
-                net.set(share.user_id, (net.get(share.user_id) ?? 0) + share.share_amount_minor);
-            } else if (expense.paid_by_user_id !== selfId && share.user_id === selfId) {
-                net.set(expense.paid_by_user_id, (net.get(expense.paid_by_user_id) ?? 0) - share.share_amount_minor);
-            }
-        }
+    for (const row of owedToMe) {
+        net.set(row.uid, (net.get(row.uid) ?? 0) + row.total);
+    }
+
+    const iOwe = await rows<Row>(
+        c,
+        `SELECT e.paid_by_user_id AS uid, SUM(s.share_amount_minor) AS total
+         FROM expense_shares s
+         JOIN expenses e ON e.id = s.expense_id
+         WHERE s.user_id = ? AND e.paid_by_user_id != ?
+         GROUP BY e.paid_by_user_id`,
+        selfId, selfId,
+    );
+    for (const row of iOwe) {
+        net.set(row.uid, (net.get(row.uid) ?? 0) - row.total);
     }
 
     const settlements = await rows<Row>(
@@ -1151,10 +1188,10 @@ app.get("/balances", async (c) => {
     // batched user lookup
     const uids = [...net.keys()];
     const userRows = uids.length > 0
-        ? await rows<UserRow>(
+        ? await rowsByIds<UserRow>(
               c,
-              `SELECT id, name, upi_id FROM users WHERE id IN (${uids.map(() => "?").join(",")})`,
-              ...uids,
+              (n) => `SELECT id, name, upi_id FROM users WHERE id IN (${placeholders(n)})`,
+              uids,
           )
         : [];
     const userById = new Map(userRows.map((u) => [u.id, u]));
@@ -1185,11 +1222,11 @@ app.get("/activity", async (c) => {
     // batched so a page of activity costs four queries, not four per row.
     const expenseIds = expenses.map((e) => e.id);
     const shares = expenseIds.length > 0
-        ? await rows<Row>(
+        ? await rowsByIds<Row>(
               c,
-              `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
-               WHERE expense_id IN (${expenseIds.map(() => "?").join(",")})`,
-              ...expenseIds,
+              (n) => `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
+                      WHERE expense_id IN (${placeholders(n)})`,
+              expenseIds,
           )
         : [];
     const sharesByExpense = new Map<string, Row[]>();
@@ -1201,20 +1238,20 @@ app.get("/activity", async (c) => {
 
     const payerIds = [...new Set(expenses.map((e) => e.paid_by_user_id as string))];
     const payerRows = payerIds.length > 0
-        ? await rows<UserRow>(
+        ? await rowsByIds<UserRow>(
               c,
-              `SELECT id, name FROM users WHERE id IN (${payerIds.map(() => "?").join(",")})`,
-              ...payerIds,
+              (n) => `SELECT id, name FROM users WHERE id IN (${placeholders(n)})`,
+              payerIds,
           )
         : [];
     const payerNameById = new Map(payerRows.map((u) => [u.id, u.name]));
 
     const groupIds = [...new Set(expenses.map((e) => e.group_id).filter(Boolean) as string[])];
     const groupRows = groupIds.length > 0
-        ? await rows<{ id: string; name: string }>(
+        ? await rowsByIds<{ id: string; name: string }>(
               c,
-              `SELECT id, name FROM groups WHERE id IN (${groupIds.map(() => "?").join(",")})`,
-              ...groupIds,
+              (n) => `SELECT id, name FROM groups WHERE id IN (${placeholders(n)})`,
+              groupIds,
           )
         : [];
     const groupNameById = new Map(groupRows.map((g) => [g.id, g.name]));
@@ -1243,15 +1280,22 @@ app.get("/activity", async (c) => {
         "SELECT * FROM settlements WHERE payer_user_id = ? OR paid_to_user_id = ? ORDER BY created_at DESC LIMIT ?",
         selfId, selfId, limit,
     );
+    const settlementIds = [...new Set(settlements.flatMap((s) => [s.payer_user_id, s.paid_to_user_id] as string[]))];
+    const settlementUsers = settlementIds.length > 0
+        ? await rowsByIds<UserRow>(
+              c,
+              (n) => `SELECT id, name FROM users WHERE id IN (${placeholders(n)})`,
+              settlementIds,
+          )
+        : [];
+    const settlementName = new Map(settlementUsers.map((u) => [u.id, u.name]));
     const settlementEvents = [];
     for (const s of settlements) {
-        const [payer] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", s.payer_user_id);
-        const [payee] = await rows<UserRow>(c, "SELECT name FROM users WHERE id = ?", s.paid_to_user_id);
         settlementEvents.push({
             type: "settlement" as const,
             id: s.id,
-            payerName: payer?.name ?? "?",
-            payeeName: payee?.name ?? "?",
+            payerName: settlementName.get(s.payer_user_id) ?? "?",
+            payeeName: settlementName.get(s.paid_to_user_id) ?? "?",
             involvedSelf: true,
             amountMinor: s.amount_minor,
             methodLabel: String(s.method).toUpperCase(),

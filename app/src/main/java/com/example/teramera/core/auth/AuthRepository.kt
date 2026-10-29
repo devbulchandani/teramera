@@ -23,6 +23,9 @@ class AuthRepository @Inject constructor(
     suspend fun googleLogin(idToken: String): Result<Unit> =
         try {
             val tokens = authApi.googleLogin(GoogleLoginRequestDto(idToken))
+            // Signing in as someone else must not surface the previous account's
+            // cached balances/groups/activity while the first sync is in flight.
+            dao.clearAccountData()
             tokenStore.save(AuthTokens(tokens.accessToken, tokens.refreshToken, tokens.userId))
             Result.success(Unit)
         } catch (e: retrofit2.HttpException) {

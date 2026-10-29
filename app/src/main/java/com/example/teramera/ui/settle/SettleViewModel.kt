@@ -7,6 +7,7 @@ import com.example.teramera.data.repository.BalanceEntry
 import com.example.teramera.data.repository.HomeRepository
 import com.example.teramera.data.sync.SyncRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,15 +47,25 @@ class SettleViewModel @Inject constructor(
     val uiState: StateFlow<SettleUiState> =
         combine(homeRepository.homeData(), homeRepository.syncedHomeData(), draft, status) { local, synced, d, st ->
             val source = synced ?: local
+            val balances = source.friends.filter { it.amountMinor != 0L }
+            // keep the open sheet pointed at the live balance, not the snapshot
+            // taken when it opened
+            val liveDraft = d?.let { current ->
+                balances.firstOrNull { it.id == current.person.id }
+                    ?.let { current.copy(person = it) }
+                    ?: current
+            }
             SettleUiState(
                 // groups are aggregates of friend debts — settling one would be meaningless
                 balances = source.friends.filter { it.amountMinor != 0L },
-                draft = d,
+                draft = liveDraft,
                 saving = st.saving,
                 saved = st.saved,
                 error = st.error,
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettleUiState())
+        }
+            .flowOn(kotlinx.coroutines.Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettleUiState())
 
     fun start(entry: BalanceEntry) {
         status.value = SaveStatus()
@@ -92,12 +103,26 @@ class SettleViewModel @Inject constructor(
 
     fun save(onDone: () -> Unit) {
         val d = uiState.value.draft ?: return
-        if (d.amountMinor <= 0 || d.amountMinor > d.fullAmount || status.value.saving) return
+        if (d.amountMinor <= 0 || status.value.saving) return
+        // Re-read the live balance: the other side may have settled, or another
+        // device may have added an expense while this sheet was open.
+        val live = uiState.value.balances.firstOrNull { it.id == d.person.id }
+        if (live == null || live.amountMinor == 0L) {
+            status.value = SaveStatus(error = "This balance just changed. Close and check again.")
+            return
+        }
+        val outstanding = kotlin.math.abs(live.amountMinor)
+        if (d.amountMinor > outstanding) {
+            status.value = SaveStatus(
+                error = "Only ₹${outstanding / 100} is still outstanding. Close and check again.",
+            )
+            return
+        }
         viewModelScope.launch {
             status.value = SaveStatus(saving = true)
             when (val result = syncRepository.pushSettlement(
-                personUserId = d.person.id,
-                personNetMinor = d.person.amountMinor,
+                personUserId = live.id,
+                personNetMinor = live.amountMinor,
                 amountMinor = d.amountMinor,
                 method = d.method.name,
             )) {

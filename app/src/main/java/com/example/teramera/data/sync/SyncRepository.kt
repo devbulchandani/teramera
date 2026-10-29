@@ -28,6 +28,10 @@ class SyncRepository @Inject constructor(
     private val _dataVersion = kotlinx.coroutines.flow.MutableStateFlow(0L)
     val dataVersion: kotlinx.coroutines.flow.StateFlow<Long> = _dataVersion
 
+    /** When the last successful sync landed, for "updated 2m ago" labels. */
+    private val _lastSyncAt = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+    val lastSyncAt: kotlinx.coroutines.flow.StateFlow<Long?> = _lastSyncAt
+
     suspend fun isLoggedIn(): Boolean = tokenStore.current() != null
 
     suspend fun selfUserId(): String? = tokenStore.current()?.userId
@@ -46,8 +50,11 @@ class SyncRepository @Inject constructor(
             if (e.code() == 404) null else throw e
         }
 
-    suspend fun refreshNow(): Result = try {
+    suspend fun refreshNow(): Result {
+        return try {
         val now = System.currentTimeMillis()
+        var wroteAnything = false
+        var meLoaded = false
 
         // all four endpoints in parallel — sequential fetches were the main lag
         kotlinx.coroutines.coroutineScope {
@@ -57,6 +64,7 @@ class SyncRepository @Inject constructor(
             val activityDeferred = async { runCatching { ledgerApi.activity() }.getOrNull() }
 
             meDeferred.await()?.let { me ->
+                meLoaded = true
                 // the previous account's "me" row must not survive a sign-in switch
                 dao.clearSelfUsers()
                 dao.insertUser(
@@ -71,6 +79,7 @@ class SyncRepository @Inject constructor(
             // Flow observes exactly one emission instead of delete + insert,
             // avoiding double-recompose on the home / activity screens.
             balancesDeferred.await()?.let { balances ->
+                wroteAnything = true
                 dao.replaceSyncedBalances(balances.map { dto ->
                     SyncedBalanceEntity(
                         userId = dto.userId, name = dto.name, netMinor = dto.netMinor,
@@ -80,6 +89,7 @@ class SyncRepository @Inject constructor(
             }
 
             groupsDeferred.await()?.let { groups ->
+                wroteAnything = true
                 // replace, not upsert — groups you left must disappear
                 dao.replaceSyncedGroups(groups.map { dto ->
                     SyncedGroupEntity(
@@ -94,6 +104,7 @@ class SyncRepository @Inject constructor(
             }
 
             activityDeferred.await()?.let { activity ->
+                wroteAnything = true
                 dao.replaceSyncedActivity(activity.map { e ->
                     SyncedActivityEntity(
                         id = e.id,
@@ -114,10 +125,16 @@ class SyncRepository @Inject constructor(
             }
         }
 
-        _dataVersion.value += 1
+        // "Success" used to mean "the call returned", even when every request
+        // failed. Treat a missing profile as a failed refresh so callers can
+        // tell "synced" from "offline with stale cache".
+        if (!meLoaded) return Result.Failure("Couldn't refresh — check your connection")
+        if (wroteAnything) _dataVersion.value += 1
+        _lastSyncAt.value = now
         Result.Success
     } catch (e: Exception) {
         Result.Failure(e.message ?: "Sync failed")
+    }
     }
 
     suspend fun updateProfile(name: String?, upiId: String?): Result = try {

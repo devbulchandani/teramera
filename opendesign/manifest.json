@@ -1,10 +1,23 @@
 {
-  "generated": "2026-08-23T19:05:00+05:30",
+  "generated": "2026-10-29T20:38:49+05:30",
   "sections": [
     {
       "id": "mockups",
       "label": "Mockups",
       "groups": [
+        {
+          "slug": "baanto",
+          "files": [
+            {
+              "label": "baanto.html",
+              "path": "mockups/baanto/baanto.html"
+            },
+            {
+              "label": "nav-and-time.html",
+              "path": "mockups/baanto/nav-and-time.html"
+            }
+          ]
+        },
         {
           "slug": "core-screens",
           "files": [
@@ -13,12 +26,12 @@
               "path": "mockups/core-screens/add-expense.html"
             },
             {
-              "label": "home-balance.html",
-              "path": "mockups/core-screens/home-balance.html"
-            },
-            {
               "label": "group-detail.html",
               "path": "mockups/core-screens/group-detail.html"
+            },
+            {
+              "label": "home-balance.html",
+              "path": "mockups/core-screens/home-balance.html"
             }
           ]
         },
@@ -30,22 +43,26 @@
               "path": "mockups/v1-screens/activity.html"
             },
             {
-              "label": "settle-up.html",
-              "path": "mockups/v1-screens/settle-up.html"
-            },
-            {
               "label": "auth-onboarding.html",
               "path": "mockups/v1-screens/auth-onboarding.html"
             },
             {
               "label": "settings-paywall.html",
               "path": "mockups/v1-screens/settings-paywall.html"
+            },
+            {
+              "label": "settle-up.html",
+              "path": "mockups/v1-screens/settle-up.html"
             }
           ]
         },
         {
           "slug": "v2-polish",
           "files": [
+            {
+              "label": "auth-v3.html",
+              "path": "mockups/v2-polish/auth-v3.html"
+            },
             {
               "label": "invite-expense-v2.html",
               "path": "mockups/v2-polish/invite-expense-v2.html"

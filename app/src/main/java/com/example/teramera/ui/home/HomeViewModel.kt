@@ -10,6 +10,7 @@ import com.example.teramera.data.repository.HomeData
 import com.example.teramera.data.repository.HomeRepository
 import com.example.teramera.data.sync.SyncRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,9 +25,10 @@ data class HomeUiState(
     val selfName: String = "",
     val selfUpiId: String = "",
     val profileSaved: Boolean = false,
+    val lastSyncAt: Long? = null,
 ) {
-    val owedToYouMinor: Long = friends.sumOf { it.amountMinor }.coerceAtLeast(0)
-    val youOweMinor: Long = -friends.sumOf { it.amountMinor }.coerceAtMost(0)
+    val owedToYouMinor: Long = friends.filter { it.amountMinor > 0 }.sumOf { it.amountMinor }
+    val youOweMinor: Long = -friends.filter { it.amountMinor < 0 }.sumOf { it.amountMinor }
     val netMinor: Long = friends.sumOf { it.amountMinor }
 }
 
@@ -80,12 +82,16 @@ class HomeViewModel @Inject constructor(
             repository.syncedHomeData(),
             repository.selfUser(),
             profileStatus,
-        ) { local, synced, self, _ ->
+            syncRepository.lastSyncAt,
+        ) { local, synced, self, _, syncedAt ->
             from(synced ?: local).copy(
                 selfName = self?.name?.ifEmpty { "You" } ?: "You",
                 selfUpiId = self?.upiId.orEmpty(),
+                lastSyncAt = syncedAt,
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+        }
+            .flowOn(kotlinx.coroutines.Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     fun saveProfile(name: String, upiId: String) {
         viewModelScope.launch {

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera — Navigation &amp; time</title>
+<link rel="stylesheet" href="../../design-systems/teramera-product/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg-3); color: var(--ink-1); font-family: var(--font-ui);
+    padding: 48px 24px 96px; transition: background var(--t-med), color var(--t-med);
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-bottom: 32px; }
+  h1 { font-family: var(--font-display); font-size: 38px; font-weight: 800; letter-spacing: -1px; }
+  .lede { color: var(--ink-2); font-size: 15px; line-height: 1.55; max-width: 620px; margin-top: 8px; }
+  .theme-btn { border: 1px solid var(--border-strong); background: var(--bg-2); color: var(--ink-1);
+    font-family: var(--font-ui); font-size: 13px; font-weight: 600; padding: 10px 16px;
+    border-radius: var(--r-pill); cursor: pointer; min-height: 44px; }
+
+  h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 48px 0 6px; }
+  .sub { color: var(--ink-2); font-size: 14px; margin-bottom: 18px; }
+
+  .stage { display: flex; gap: 28px; overflow-x: auto; padding: 18px 18px 28px; }
+  .phone {
+    width: 390px; height: 844px; flex-shrink: 0; background: var(--bg-1); border-radius: 44px;
+    box-shadow: 0 24px 60px oklch(0.235 0.02 60 / 0.25), 0 0 0 10px oklch(0.2 0.01 60), 0 0 0 12px oklch(0.35 0.01 60);
+    overflow: hidden; position: relative; display: flex; flex-direction: column;
+  }
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 28px 6px;
+    font-size: 14px; font-weight: 600; letter-spacing: .2px; }
+  .screen { flex: 1; overflow-y: auto; padding: 16px 20px 110px; }
+  .screen.no-nav { padding-bottom: 104px; }
+  .caption { text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 10px; }
+
+  /* shared bits */
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .hi { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .name { font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.15; }
+  .avatar { width: 44px; height: 44px; border-radius: 50%; color: var(--on-accent); font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(105deg, var(--accent-1) 0 50%, var(--accent-2) 50%); }
+
+  .hero-card { background: var(--inverse-surface); border-radius: var(--r-lg); padding: 20px; color: var(--inverse-ink);
+    position: relative; overflow: hidden; }
+  .hero-card::after { content: ""; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px;
+    border-radius: 50%; border: 22px solid oklch(0.72 0.11 195 / .22); }
+  .hero-label { font-size: 13px; font-weight: 500; opacity: .7; }
+  .hero-amount { font-family: var(--font-display); font-size: 40px; font-weight: 800; line-height: 1.1;
+    font-feature-settings: "tnum"; margin-top: 2px; }
+  .hero-amount .rupee { font-size: 26px; opacity: .85; margin-right: 2px; }
+  .hero-chips { display: flex; gap: 8px; margin-top: 14px; position: relative; z-index: 1; flex-wrap: wrap; }
+  .chip { font-size: 12.5px; font-weight: 600; padding: 7px 12px; border-radius: var(--r-pill);
+    font-feature-settings: "tnum"; display: inline-flex; align-items: center; gap: 6px; }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .chip.pos { background: oklch(0.74 0.11 160 / .22); color: var(--inverse-pos); }
+  .chip.neg { background: oklch(0.70 0.15 30 / .20); color: var(--inverse-neg); }
+  .hero-updated { margin-top: 12px; font-size: 12px; opacity: .6; position: relative; z-index: 1; }
+
+  .seg-tabs { display: flex; background: var(--bg-3); border-radius: var(--r-pill); padding: 4px; margin-top: 20px; gap: 2px; }
+  .seg-tabs span { flex: 1; text-align: center; font-size: 13.5px; font-weight: 600; color: var(--ink-2); padding: 9px 0; border-radius: var(--r-pill); }
+  .seg-tabs span.active { background: var(--bg-1); color: var(--ink-1); box-shadow: var(--shadow-card); }
+
+  .section-label { font-size: 13px; font-weight: 700; color: var(--ink-2); margin: 22px 0 6px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
+  .row .ava { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; color: var(--on-accent); font-weight: 700; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; }
+  .row .body { flex: 1; min-width: 0; }
+  .row .nm { font-size: 15px; font-weight: 600; }
+  .row .meta { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+  .amt { font-family: var(--font-display); font-size: 16px; font-weight: 700; font-feature-settings: "tnum"; flex-shrink: 0; }
+  .amt.pos { color: var(--pos); } .amt.neg { color: var(--neg); }
+
+  /* FAB */
+  .fab { position: absolute; right: 20px; bottom: 104px; background: var(--accent-1); color: var(--on-accent); border: 0;
+    border-radius: var(--r-md); padding: 15px 20px; font-family: var(--font-ui); font-size: 14px; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 8px; box-shadow: var(--shadow-float); }
+  .fab svg { width: 18px; height: 18px; }
+
+  /* bottom nav — the redesign */
+  .bottom-nav { position: absolute; left: 0; right: 0; bottom: 0; background: var(--bg-2);
+    border-top: 1px solid var(--border-subtle); display: flex; padding: 10px 16px 26px; }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--ink-2);
+    background: none; border: 0; padding: 6px 0; min-height: 52px; }
+  .nav-item .pill { display: flex; align-items: center; justify-content: center; width: 48px; height: 28px;
+    border-radius: var(--r-pill); }
+  .nav-item.active { color: var(--ink-1); }
+  .nav-item.active svg { color: var(--accent-1); }
+  .nav-item.active .pill { background: var(--accent-1-soft); }
+  .nav-item svg { width: 22px; height: 22px; }
+
+  /* activity */
+  .day-head { font-size: 13px; font-weight: 700; color: var(--ink-2); margin: 22px 0 4px; }
+  .ev { display: flex; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--border-subtle); align-items: center; }
+  .badge { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; flex-shrink: 0; }
+  .badge.teal { background: var(--accent-1-soft); color: var(--accent-1); }
+  .badge.violet { background: var(--accent-2-soft); color: var(--accent-2); }
+  .ev .t { font-size: 14.5px; line-height: 1.35; }
+  .ev .t b { font-weight: 700; }
+  .ev .d { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; font-feature-settings: "tnum"; }
+
+  /* group detail */
+  .gd-top { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .icon-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--bg-2); color: var(--ink-1);
+    display: grid; place-items: center; }
+  .gd-top .title { flex: 1; font-family: var(--font-display); font-size: 20px; font-weight: 700; text-align: center; }
+  .gd-hero { background: var(--accent-2); border-radius: var(--r-lg); padding: 22px; color: var(--on-accent); position: relative; overflow: hidden; }
+  .gd-hero::after { content: ""; position: absolute; right: -60px; top: -60px; width: 200px; height: 200px; border-radius: 50%;
+    background: radial-gradient(circle, oklch(0.75 0.12 305 / .55), transparent 70%); }
+  .gd-hero .k { font-size: 12.5px; opacity: .78; position: relative; }
+  .gd-hero .v { font-family: var(--font-display); font-size: 30px; font-weight: 800; margin-top: 2px; position: relative; font-feature-settings: "tnum"; }
+  .gd-hero .m { font-size: 12.5px; opacity: .78; margin-top: 8px; position: relative; }
+  .gd-actions { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; padding: 14px 20px 30px;
+    background: linear-gradient(transparent, var(--bg-1) 26%); }
+  .gd-actions button { flex: 1; min-height: 52px; border-radius: var(--r-md); font-family: var(--font-ui);
+    font-size: 14px; font-weight: 700; border: 1px solid var(--border-strong); background: var(--bg-2); color: var(--ink-1); }
+  .gd-actions button.primary { background: var(--accent-1); border-color: var(--accent-1); color: var(--on-accent); }
+
+  /* confirmation */
+  .confirm { margin-top: 80px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .confirm .tick { width: 84px; height: 84px; border-radius: 50%; background: var(--accent-1-soft); color: var(--accent-1);
+    display: grid; place-items: center; font-size: 36px; }
+  .confirm h3 { font-family: var(--font-display); font-size: 22px; font-weight: 800; margin-top: 8px; }
+  .confirm .amount { font-family: var(--font-display); font-size: 34px; font-weight: 800; font-feature-settings: "tnum"; }
+  .confirm .when { font-size: 13px; color: var(--ink-2); }
+  .confirm .note { font-size: 13px; color: var(--ink-2); max-width: 260px; line-height: 1.5; }
+
+  /* spec panel */
+  .spec { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .panel { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); padding: 22px; }
+  .panel h3 { font-family: var(--font-display); font-size: 17px; font-weight: 700; margin-bottom: 12px; }
+  .panel ul { margin-left: 18px; font-size: 13.5px; line-height: 1.85; color: var(--ink-2); }
+  .panel li b { color: var(--ink-1); }
+  .before-after { display: flex; gap: 10px; margin-bottom: 14px; }
+  .mini-nav { flex: 1; border-radius: 12px; border: 1px solid var(--border-subtle); padding: 10px 8px 8px; background: var(--bg-2); }
+  .mini-nav .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); text-align: center; margin-bottom: 8px; }
+  .mini-nav .items { display: flex; }
+  .mini-nav .it { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 9px; color: var(--ink-3); }
+  .mini-nav .dotp { width: 22px; height: 14px; border-radius: 999px; background: transparent; display: grid; place-items: center; }
+  .mini-nav .bar { width: 12px; height: 12px; border-radius: 3px; background: currentColor; opacity: .9; }
+  .mini-nav.old .it { font-size: 11px; color: var(--ink-3); }
+  .mini-nav.old .it.on { color: var(--ink-2); }
+  .mini-nav.new .it { font-size: 12px; }
+  .mini-nav.new .it.on { color: var(--ink-1); }
+  .mini-nav.new .it.on svg, .mini-nav.new .it.on .bar { color: var(--accent-1); }
+  .mini-nav.new .it.on .dotp { background: var(--accent-1-soft); }
+  .mini-nav.old { border-top: 0; }
+  .mini-nav.new { border-top: 1px solid var(--border-subtle); }
+
+  @media (max-width: 860px) { .spec { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Navigation &amp; time</h1>
+      <p class="lede">Four tabs, one hierarchy. Drilling into a group keeps <b>Groups</b> lit; the group screen drops the global bar for its own action bar. Times read “Today 4:12 pm”, “Yesterday 9:40 am”, then “3 Mar”, and “3 Mar 2026” once the year differs.</p>
+    </div>
+    <button class="theme-btn" onclick="toggleTheme()">Toggle dark</button>
+  </header>
+
+  <div class="stage">
+
+    <!-- ================= A — HOME ================= -->
+    <div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+        <div class="screen">
+          <div class="topbar">
+            <div><div class="hi">Good morning</div><div class="name">Dev</div></div>
+            <div class="avatar">D</div>
+          </div>
+          <div class="hero-card">
+            <div class="hero-label">You are owed in total</div>
+            <div class="hero-amount"><span class="rupee">₹</span>4,830</div>
+            <div class="hero-chips">
+              <span class="chip pos"><span class="dot"></span>You’re owed ₹5,750</span>
+              <span class="chip neg"><span class="dot"></span>You owe ₹920</span>
+            </div>
+            <div class="hero-updated">Updated 2m ago</div>
+          </div>
+
+          <div class="seg-tabs"><span class="active">Friends</span><span>Groups</span><span>All</span></div>
+          <div class="section-label">Owes you</div>
+          <div class="row">
+            <div class="ava" style="background:linear-gradient(105deg,var(--accent-1) 0 50%,var(--accent-2) 50%)">PR</div>
+            <div class="body"><div class="nm">Priya</div><div class="meta">last settled Today 11:05 am</div></div>
+            <div class="amt pos">₹1,240</div>
+          </div>
+          <div class="row">
+            <div class="ava" style="background:linear-gradient(105deg,var(--accent-2) 0 50%,var(--accent-1) 50%)">AK</div>
+            <div class="body"><div class="nm">Arjun</div><div class="meta">last settled Today 9:40 am</div></div>
+            <div class="amt pos">₹4,510</div>
+          </div>
+          <div class="section-label">You owe</div>
+          <div class="row">
+            <div class="ava" style="background:linear-gradient(105deg,var(--accent-1) 0 50%,var(--accent-2) 50%)">MK</div>
+            <div class="body"><div class="nm">Meera</div><div class="meta">last settled Yesterday 8:15 pm</div></div>
+            <div class="amt neg">₹920</div>
+          </div>
+        </div>
+        <button class="fab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add expense
+        </button>
+        <nav class="bottom-nav">
+          <button class="nav-item active"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg></span>Home</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="10" r="2.4"/><path d="M15 19a4.5 4.5 0 0 1 5.5-3.4"/></svg></span>Groups</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg></span>Activity</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></span>Settle</button>
+        </nav>
+      </div>
+      <div class="caption">Home · tinted active icon, 12px label, hairline, “Updated 2m ago”</div>
+    </div>
+
+    <!-- ================= B — ACTIVITY ================= -->
+    <div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+        <div class="screen">
+          <div class="topbar"><div class="name" style="font-size:26px">Activity</div><div class="avatar">D</div></div>
+          <div class="seg-tabs"><span class="active">All</span><span>Expenses</span><span>Settlements</span></div>
+
+          <div class="day-head">Today</div>
+          <div class="ev">
+            <div class="badge teal">+</div>
+            <div class="body"><div class="t"><b>Arjun</b> added Goa cab</div><div class="d">₹1,240 · split among 4 · 4:12 pm</div></div>
+          </div>
+          <div class="ev">
+            <div class="badge violet">✓</div>
+            <div class="body"><div class="t"><b>Priya</b> settled up with <b>you</b></div><div class="d">UPI · 11:05 am</div></div>
+          </div>
+
+          <div class="day-head">Yesterday</div>
+          <div class="ev">
+            <div class="badge teal">+</div>
+            <div class="body"><div class="t"><b>You</b> added Sunday brunch</div><div class="d">₹3,600 · split among 3 · 9:40 am</div></div>
+          </div>
+
+          <div class="day-head">3 Mar</div>
+          <div class="ev">
+            <div class="badge teal">+</div>
+            <div class="body"><div class="t"><b>Meera</b> added Groceries</div><div class="d">₹860 · split among 2 · 7:22 pm</div></div>
+          </div>
+
+          <div class="day-head">12 Dec 2025</div>
+          <div class="ev">
+            <div class="badge teal">+</div>
+            <div class="body"><div class="t"><b>You</b> added New Year deposit</div><div class="d">₹5,000 · split among 4 · 8:00 pm</div></div>
+          </div>
+        </div>
+        <nav class="bottom-nav">
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg></span>Home</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="10" r="2.4"/><path d="M15 19a4.5 4.5 0 0 1 5.5-3.4"/></svg></span>Groups</button>
+          <button class="nav-item active"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg></span>Activity</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></span>Settle</button>
+        </nav>
+      </div>
+      <div class="caption">Activity · day buckets by date, year when needed, time on every row</div>
+    </div>
+
+
+    <!-- ================= C — GROUPS ================= -->
+    <div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+        <div class="screen">
+          <div class="topbar"><div class="name" style="font-size:26px">Groups</div><div class="avatar">D</div></div>
+          <div class="section-label">Active</div>
+          <div class="row">
+            <div class="ava" style="background:linear-gradient(105deg,var(--accent-2) 0 50%,var(--accent-1) 50%)">GT</div>
+            <div class="body"><div class="nm">Goa trip</div><div class="meta">4 members · last activity Today 4:12 pm</div></div>
+            <div class="amt pos">₹2,310</div>
+          </div>
+          <div class="row">
+            <div class="ava" style="background:linear-gradient(105deg,var(--accent-1) 0 50%,var(--accent-2) 50%)">FL</div>
+            <div class="body"><div class="nm">Flat 4B</div><div class="meta">3 members · last activity Yesterday 9:40 am</div></div>
+            <div class="amt neg">₹640</div>
+          </div>
+          <div class="row">
+            <div class="ava" style="background:linear-gradient(105deg,var(--accent-2) 0 50%,var(--accent-1) 50%)">WK</div>
+            <div class="body"><div class="nm">Weekend trek</div><div class="meta">6 members · last activity 3 Mar</div></div>
+            <div class="amt pos">₹1,150</div>
+          </div>
+        </div>
+        <button class="fab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add expense
+        </button>
+        <nav class="bottom-nav">
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg></span>Home</button>
+          <button class="nav-item active"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="10" r="2.4"/><path d="M15 19a4.5 4.5 0 0 1 5.5-3.4"/></svg></span>Groups</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg></span>Activity</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></span>Settle</button>
+        </nav>
+      </div>
+      <div class="caption">Groups · same bar, Groups lit, Add expense reachable</div>
+    </div>
+
+    <!-- ================= D — GROUP DETAIL ================= -->
+    <div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+        <div class="screen no-nav">
+          <div class="gd-top">
+            <button class="icon-btn" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <div class="title">Goa trip</div>
+            <button class="icon-btn" aria-label="Share invite"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M8 8l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg></button>
+          </div>
+          <div class="gd-hero">
+            <div class="k">You are owed</div>
+            <div class="v">₹2,310</div>
+            <div class="m">4 members · ₹18,400 spent · started 3 Mar 2026</div>
+          </div>
+
+          <div class="section-label">Expenses</div>
+          <div class="row">
+            <div class="body"><div class="nm">Cab to airport</div><div class="meta">paid by Arjun · 4 people · Today 4:12 pm</div></div>
+            <div class="amt">₹1,240</div>
+          </div>
+          <div class="row">
+            <div class="body"><div class="nm">Beach shack</div><div class="meta">paid by you · 3 people · Yesterday 8:15 pm</div></div>
+            <div class="amt">₹2,180</div>
+          </div>
+          <div class="row">
+            <div class="body"><div class="nm">Stay · 2 nights</div><div class="meta">paid by Priya +1 · 4 people · 3 Mar 2026, 2:05 pm</div></div>
+            <div class="amt">₹9,600</div>
+          </div>
+        </div>
+        <div class="gd-actions">
+          <button>Settle up</button>
+          <button class="primary">Add expense</button>
+        </div>
+      </div>
+      <div class="caption">Group detail · global bar hidden, one action bar, dates with time</div>
+    </div>
+
+    <!-- ================= E — SETTLE ================= -->
+    <div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+        <div class="screen">
+          <div class="confirm">
+            <div class="tick"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div>
+            <h3>All settled with Meera</h3>
+            <div class="amount">₹920</div>
+            <div class="when">Recorded Today 7:05 pm</div>
+            <div class="note">Meera will see this in their activity, and both balances update everywhere.</div>
+          </div>
+        </div>
+        <nav class="bottom-nav">
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg></span>Home</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="10" r="2.4"/><path d="M15 19a4.5 4.5 0 0 1 5.5-3.4"/></svg></span>Groups</button>
+          <button class="nav-item"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg></span>Activity</button>
+          <button class="nav-item active"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></span>Settle</button>
+        </nav>
+      </div>
+      <div class="caption">Settle · confirmation carries the timestamp</div>
+    </div>
+  </div>
+
+  <!-- ================= SPEC ================= -->
+  <h2>What changed in the bar</h2>
+  <div class="spec">
+    <div class="panel">
+      <h3>Before → after</h3>
+      <div class="before-after">
+        <div class="mini-nav old">
+          <div class="lbl">Before</div>
+          <div class="items">
+            <div class="it on"><span class="dotp"><span class="bar"></span></span>Home</div>
+            <div class="it"><span class="dotp"><span class="bar"></span></span>Groups</div>
+            <div class="it"><span class="dotp"><span class="bar"></span></span>Activity</div>
+            <div class="it"><span class="dotp"><span class="bar"></span></span>Settle</div>
+          </div>
+        </div>
+        <div class="mini-nav new">
+          <div class="lbl">After</div>
+          <div class="items">
+            <div class="it on"><span class="dotp"><span class="bar"></span></span>Home</div>
+            <div class="it"><span class="dotp"><span class="bar"></span></span>Groups</div>
+            <div class="it"><span class="dotp"><span class="bar"></span></span>Activity</div>
+            <div class="it"><span class="dotp"><span class="bar"></span></span>Settle</div>
+          </div>
+        </div>
+      </div>
+      <ul>
+        <li>Selection follows the destination hierarchy, so <b>Groups</b> stays lit on a group screen.</li>
+        <li>The active icon is tinted teal, not just its label.</li>
+        <li>Labels move from 11px to <b>12px</b> and the bar gets a 1px top hairline.</li>
+        <li>The bar hides on group detail; its own action bar is the only bottom surface.</li>
+        <li>Screens stop adding a blank 96dp under the bar; spacing is derived from the bar.</li>
+        <li>“Add expense” is reachable from Home and Groups, not Home only.</li>
+        <li>Every icon gets a content description for TalkBack.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Time formats</h3>
+      <ul>
+        <li><b>Today 4:12 pm</b> — same day</li>
+        <li><b>Yesterday 9:40 am</b> — previous day</li>
+        <li><b>3 Mar</b> — this year</li>
+        <li><b>3 Mar 2026, 2:05 pm</b> — any other year</li>
+        <li><b>Updated 2m ago</b> — sync freshness on the Home hero</li>
+        <li>Days are grouped by calendar date, never by the formatted label.</li>
+        <li>Numbers stay tabular so columns do not dance.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleTheme() {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === 'dark' ? '' : 'dark';
+}
+</script>
+</body>
+</html>

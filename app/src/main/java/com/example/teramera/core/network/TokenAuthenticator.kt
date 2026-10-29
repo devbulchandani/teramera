@@ -33,9 +33,19 @@ class TokenAuthenticator @Inject constructor(
                     .build()
             }
 
-            val refreshed = runBlocking {
+            val outcome = runBlocking {
                 runCatching { authApiProvider.get().refresh(AuthRefreshRequestDto(tokens.refreshToken)) }
-            }.getOrNull() ?: return null.also { runBlocking { tokenStore.clear() } }
+            }
+            val refreshed = outcome.getOrNull()
+            if (refreshed == null) {
+                // Only an explicit rejection means the session is dead. A timeout,
+                // DNS failure or 5xx must not sign the user out — they may be offline.
+                val error = outcome.exceptionOrNull()
+                if (error is retrofit2.HttpException && error.code() == 401) {
+                    runBlocking { tokenStore.clear() }
+                }
+                return null
+            }
 
             runBlocking { tokenStore.save(AuthTokens(refreshed.accessToken, refreshed.refreshToken, refreshed.userId)) }
 

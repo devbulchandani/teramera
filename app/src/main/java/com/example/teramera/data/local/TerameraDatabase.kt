@@ -63,7 +63,13 @@ data class ExpenseShareEntity(
 
 enum class PaymentMethod { UPI, CASH, BANK }
 
-@Entity(tableName = "settlements")
+@Entity(
+    tableName = "settlements",
+    indices = [
+        androidx.room.Index(value = ["groupId"]),
+        androidx.room.Index(value = ["createdAt"]),
+    ],
+)
 data class SettlementEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val groupId: String?,
@@ -76,7 +82,10 @@ data class SettlementEntity(
 
 // ---- server-synced snapshots (written by SyncRepository, read when logged in) ----
 
-@Entity(tableName = "synced_balances")
+@Entity(
+    tableName = "synced_balances",
+    indices = [androidx.room.Index(value = ["netMinor"])],
+)
 data class SyncedBalanceEntity(
     @PrimaryKey val userId: String,
     val name: String,
@@ -85,7 +94,10 @@ data class SyncedBalanceEntity(
     val updatedAt: Long,
 )
 
-@Entity(tableName = "synced_groups")
+@Entity(
+    tableName = "synced_groups",
+    indices = [androidx.room.Index(value = ["netForMeMinor"])],
+)
 data class SyncedGroupEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -95,7 +107,11 @@ data class SyncedGroupEntity(
     val updatedAt: Long,
 )
 
-@Entity(tableName = "synced_activity", primaryKeys = ["id", "type"])
+@Entity(
+    tableName = "synced_activity",
+    primaryKeys = ["id", "type"],
+    indices = [androidx.room.Index(value = ["createdAt"])],
+)
 data class SyncedActivityEntity(
     val id: String,
     // "expense" | "settlement"
@@ -257,7 +273,7 @@ interface TerameraDao {
         SyncedGroupEntity::class,
         SyncedActivityEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class TerameraDatabase : RoomDatabase() {

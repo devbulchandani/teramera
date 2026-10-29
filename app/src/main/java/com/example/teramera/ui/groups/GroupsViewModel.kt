@@ -7,6 +7,7 @@ import com.example.teramera.core.network.LedgerApi
 import com.example.teramera.data.repository.HomeRepository
 import com.example.teramera.data.sync.SyncRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +35,9 @@ class GroupsViewModel @Inject constructor(
         combine(homeRepository.homeData(), homeRepository.syncedHomeData(), creation) { local, synced, (busy, error) ->
             val chosen = synced ?: local
             GroupsUiState(groups = chosen.groups, creating = busy, error = error)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GroupsUiState())
+        }
+            .flowOn(kotlinx.coroutines.Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GroupsUiState())
 
     fun createGroup(name: String, onCreated: (String) -> Unit) {
         val trimmed = name.trim()

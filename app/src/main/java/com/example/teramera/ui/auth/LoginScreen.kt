@@ -30,6 +30,8 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.BuildConfig
+import com.example.teramera.ui.components.Baanto
+import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.theme.TerameraTheme
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -52,8 +54,16 @@ fun LoginScreen(
             .padding(horizontal = 28.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        androidx.compose.foundation.layout.Row(
+        Baanto(
+            state = BaantoState.Idle,
+            size = 88.dp,
+            animate = true,
             modifier = Modifier.align(Alignment.CenterHorizontally),
+        )
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(top = 12.dp),
         ) {
             Text("tere", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.secondary)
             Text("mera", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.primary)

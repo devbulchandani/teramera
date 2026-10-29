@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.data.repository.BalanceEntry
+import com.example.teramera.ui.components.EmptyState
 import com.example.teramera.ui.theme.TerameraTheme
 import java.text.NumberFormat
 import java.util.Locale
@@ -125,6 +126,7 @@ fun HomeContent(
             netMinor = state.netMinor,
             owedToYouMinor = state.owedToYouMinor,
             youOweMinor = state.youOweMinor,
+            lastSyncAt = state.lastSyncAt,
         )
         SegmentedTabs(
             tabs = HomeTab.entries.map { it.label },
@@ -133,12 +135,22 @@ fun HomeContent(
 
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 96.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 88.dp),
         ) {
             val entries = when (HomeTab.entries[selectedTab]) {
                 HomeTab.Friends -> state.friends.map { it.copy(subtitle = friendSubtitle(it)) }
                 HomeTab.Groups -> state.groups
                 HomeTab.All -> state.friends.map { it.copy(subtitle = friendSubtitle(it)) } + state.groups
+            }
+            if (entries.isEmpty()) {
+                item {
+                    EmptyState(
+                        title = "No balances yet",
+                        message = "Add an expense or create a group to start splitting.",
+                        actionLabel = "Add expense",
+                        onAction = onAddExpense,
+                    )
+                }
             }
             val owedYou = entries.filter { it.amountMinor > 0 }
             if (owedYou.isNotEmpty()) {
@@ -253,7 +265,7 @@ private fun initialsOfName(name: String): String =
     name.split(" ").filter { it.isNotBlank() }.take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
 
 @Composable
-private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long) {
+private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long, lastSyncAt: Long?) {
     // Inverted-ink card: dark in light theme, cream in dark theme.
     val bg = MaterialTheme.colorScheme.onBackground
     val fg = MaterialTheme.colorScheme.background
@@ -286,6 +298,14 @@ private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long) {
                 label = "You owe ₹${formatInr(youOweMinor)}",
                 dotColor = MaterialTheme.colorScheme.error,
                 textColor = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (lastSyncAt != null) {
+            Text(
+                "Updated ${com.example.teramera.core.time.TimeFormat.relative(lastSyncAt)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = fg.copy(alpha = 0.6f),
+                modifier = Modifier.padding(top = 12.dp),
             )
         }
     }
@@ -401,22 +421,33 @@ private fun HorizontalHairline() {
 
 @Composable
 internal fun Avatar(initials: String, isViolet: Boolean, size: androidx.compose.ui.unit.Dp) {
-    val primary = if (isViolet) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
-    val soft = if (isViolet) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
+    val first = if (isViolet) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+    val second = if (isViolet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
     Box(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(Brush.linearGradient(0f to primary, 0.5f to primary, 0.5f to soft)),
+            // hard 105°-ish split between the two accent hues, both dark enough for white text
+            .background(Brush.linearGradient(0f to first, 0.5f to first, 0.5001f to second, 1f to second)),
         contentAlignment = Alignment.Center,
     ) {
-        Text(initials, style = MaterialTheme.typography.labelMedium, color = Color.White)
+        Text(initials, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary)
     }
 }
 
-// Minor units are paise; UI shows whole rupees.
-internal fun formatInr(minor: Long): String =
-    NumberFormat.getIntegerInstance(Locale("en", "IN")).format((minor + 50) / 100)
+// Minor units are paise. Whole rupees when exact, otherwise shown to the paisa
+// (brand rule: no decimals when .00).
+private val inrFormat = NumberFormat.getIntegerInstance(Locale("en", "IN"))
+
+internal fun formatInr(minor: Long): String = synchronized(inrFormat) {
+    val abs = kotlin.math.abs(minor)
+    val sign = if (minor < 0) "-" else ""
+    if (abs % 100 == 0L) {
+        sign + inrFormat.format(abs / 100)
+    } else {
+        sign + inrFormat.format(abs / 100) + "." + (abs % 100).toString().padStart(2, '0')
+    }
+}
 
 @Composable
 private fun ProfileDialog(

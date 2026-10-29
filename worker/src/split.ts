@@ -18,6 +18,17 @@ export type SplitResult =
 
 export function computeSplit(input: SplitInput): SplitResult {
     const people = [...new Set(input.participants)];
+    if (people.length < 2) return { ok: false, reason: "At least two people required" };
+    if (!Number.isSafeInteger(input.totalMinor) || input.totalMinor <= 0) {
+        return { ok: false, reason: "Amount must be a positive whole number of paise" };
+    }
+    const raw = input.rawValues ?? {};
+    for (const p of people) {
+        const value = raw[p] ?? 0;
+        if (!Number.isSafeInteger(value) || value < 0) {
+            return { ok: false, reason: "Split values must be non-negative whole numbers" };
+        }
+    }
     switch (input.type) {
         case "EQUAL": {
             const per = Math.floor(input.totalMinor / people.length);

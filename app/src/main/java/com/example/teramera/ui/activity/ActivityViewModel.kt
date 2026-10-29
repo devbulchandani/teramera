@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teramera.data.local.TerameraDao
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -77,5 +78,7 @@ class ActivityViewModel @Inject constructor(
                     }
                 },
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ActivityUiState())
+        }
+            .flowOn(kotlinx.coroutines.Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ActivityUiState())
 }

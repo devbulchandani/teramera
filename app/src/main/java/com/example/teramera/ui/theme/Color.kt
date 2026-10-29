@@ -42,3 +42,10 @@ val DNegRed = Color(0xFFED7665)
 val DNegSoft = Color(0xFF46271F)
 
 val DBorderSubtle = Color(0xFF352C23)
+
+// Fixed cream for the mascot's face and coin in both themes (never flips).
+val MascotCream = Color(0xFFFBF9F4)
+
+// Foreground for text/graphics on an accent fill.
+val OnAccentLight = Color(0xFFFBF9F4)
+val OnAccentDark = Color(0xFF1E1711)

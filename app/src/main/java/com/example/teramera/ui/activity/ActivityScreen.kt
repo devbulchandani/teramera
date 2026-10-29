@@ -37,11 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.teramera.core.time.TimeFormat
+import com.example.teramera.ui.components.EmptyState
 import com.example.teramera.ui.home.formatInr
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 
 private enum class ActivityFilter(val label: String) { All("All"), Expenses("Expenses"), Settlements("Settlements") }
 
@@ -79,12 +77,12 @@ fun ActivityScreen(
             ActivityFilter.Settlements -> state.events.filterIsInstance<ActivityEvent.SettlementMade>()
         }
 
-        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)) {
+        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)) {
             // Events arrive sorted newest-first; groupBy preserves encounter order per day.
-            filtered.groupBy { dayLabel(it.createdAt) }.forEach { (dayLabel, events) ->
-                item(key = "day-$dayLabel") {
+            filtered.groupBy { TimeFormat.dayStart(it.createdAt) }.forEach { (day, events) ->
+                item(key = "day-$day") {
                     Text(
-                        dayLabel,
+                        TimeFormat.dayLabel(day),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 24.dp, top = 24.dp, bottom = 6.dp),
@@ -101,11 +99,9 @@ fun ActivityScreen(
             }
             if (filtered.isEmpty()) {
                 item {
-                    Text(
-                        "Nothing here yet.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(20.dp),
+                    EmptyState(
+                        title = "Nothing here yet",
+                        message = "Expenses and settlements you're part of will show up here.",
                     )
                 }
             }
@@ -150,7 +146,7 @@ private fun ExpenseRow(event: ActivityEvent.ExpenseAdded) {
         Column(Modifier.weight(1f)) {
             AnnotatedText(bold = event.payerName, rest = " added ${event.title}")
             Text(
-                "₹${formatInr(event.amountMinor)} · split among ${event.participantCount} · ${timeLabel(event.createdAt)}",
+                "₹${formatInr(event.amountMinor)} · split among ${event.participantCount} · ${TimeFormat.time(event.createdAt)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -181,7 +177,7 @@ private fun SettlementRow(event: ActivityEvent.SettlementMade) {
         Column(Modifier.weight(1f)) {
             AnnotatedText(bold = event.payerName, rest = " settled up with ${event.payeeName}")
             Text(
-                "${event.methodLabel} · ${timeLabel(event.createdAt)}",
+                "${event.methodLabel} · ${TimeFormat.time(event.createdAt)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -214,18 +210,3 @@ private fun AnnotatedText(bold: String, rest: String) {
     )
 }
 
-private fun timeLabel(millis: Long): String =
-    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(millis))
-
-private fun dayLabel(millis: Long): String {
-    val cal = Calendar.getInstance().apply { timeInMillis = millis }
-    val today = Calendar.getInstance()
-    return when {
-        sameDay(cal, today) -> "Today"
-        sameDay(cal, (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }) -> "Yesterday"
-        else -> SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(millis))
-    }
-}
-
-private fun sameDay(a: Calendar, b: Calendar): Boolean =
-    a.get(Calendar.YEAR) == b.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
