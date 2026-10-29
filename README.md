@@ -132,11 +132,28 @@ then open `http://localhost:8289/opendesign/`.
 
 ## Releases
 
+Published builds are **signed release APKs**, not debug builds, so an update
+installs cleanly over the previous one.
+
+Signing material lives outside git:
+
+- `keys/teramera-release.jks` — the release keystore (**back it up**; losing it
+  means future builds can't update installed apps)
+- `keystore.properties` — path, alias and passwords for local builds (both files
+  are gitignored)
+
+CI reads the same key from repo secrets: `ANDROID_KEYSTORE_BASE64` (base64 of the
+`.jks`), `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
+
 Bump `versionCode`/`versionName` in `app/build.gradle.kts` and `worker/wrangler.jsonc`,
-commit, then `git tag v0.X.Y && git push --tags`. The `.github/workflows/release.yml`
-workflow builds the APK, copies it into `worker/public/teramera.apk`, deploys the
-Worker (if `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets are configured),
-and creates the GitHub release with `teramera.apk` + `app-debug.apk` assets.
+commit, then `git tag v0.X.Y && git push origin v0.X.Y`. The `.github/workflows/release.yml`
+workflow builds and signs the APK, verifies the signature, copies it into
+`worker/public/teramera.apk`, deploys the Worker (if `CLOUDFLARE_API_TOKEN` /
+`CLOUDFLARE_ACCOUNT_ID` secrets are configured), and creates the GitHub release
+with `teramera.apk` + `teramera-release.apk` assets.
+
+Local build: `./gradlew :app:assembleRelease` →
+`app/build/outputs/apk/release/app-release.apk`.
 
 Existing installs detect the new build via the Worker's `/app/version` endpoint
 on the next launch and prompt for in-app update.

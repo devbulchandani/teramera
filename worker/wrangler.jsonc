@@ -14,8 +14,8 @@
     "directory": "./public"
   },
   "vars": {
-    "APP_VERSION_CODE": "14",
-    "APP_VERSION_NAME": "0.3.9",
+    "APP_VERSION_CODE": "15",
+    "APP_VERSION_NAME": "0.4.0",
     "FCM_PROJECT_ID": "teramera-dfbd2"
   }
 }

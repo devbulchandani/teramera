@@ -23,6 +23,20 @@ val firebaseSenderId = firebaseProjectInfo?.get("project_number")?.toString() ?:
 val firebaseAppId = firebaseClientInfo?.get("mobilesdk_app_id")?.toString() ?: ""
 val firebaseApiKey = firstApiKey?.get("current_key")?.toString() ?: ""
 
+// Release signing: keystore.properties at the repo root locally (gitignored), or
+// KEYSTORE_* env vars in CI. Without either, assembleRelease stays unsigned so
+// plain `./gradlew assembleDebug` still works on a fresh clone.
+val keystoreProps = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val releaseStorePath = keystoreProps.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH") ?: ""
+val releaseStorePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("KEYSTORE_PASSWORD") ?: ""
+val releaseKeyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS") ?: ""
+val releaseKeyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("KEY_PASSWORD") ?: ""
+val hasReleaseSigning = releaseStorePath.isNotBlank() &&
+    releaseStorePassword.isNotBlank() &&
+    rootProject.file(releaseStorePath).exists()
+
 android {
     namespace = "com.example.teramera"
     compileSdk {
@@ -33,8 +47,8 @@ android {
         applicationId = "com.example.teramera"
         minSdk = 24
         targetSdk = 37
-        versionCode = 14
-        versionName = "0.3.9"
+        versionCode = 15
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -60,11 +74,25 @@ android {
         buildConfigField("String", "FIREBASE_API_KEY", "\"$firebaseApiKey\"")
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseStorePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // R8 stays off: the release build is the debug build, signed with the
+            // upload key. Turn optimization on only after a tested shrinking pass.
             optimization {
                 enable = false
             }
+            signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else null
         }
     }
     compileOptions {

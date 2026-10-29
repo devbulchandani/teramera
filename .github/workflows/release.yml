@@ -101,19 +101,44 @@ jobs:
             exit 1
           fi
 
-      - name: Build debug APK
+      # The published APK must be signed with the release key, otherwise every
+      # in-app update installs a build Android won't accept over the old one.
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -e
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is missing — refusing to publish an unsigned APK. Add ANDROID_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/teramera-release.jks"
+          ls -la "$RUNNER_TEMP/teramera-release.jks"
+
+      - name: Build signed release APK
         env:
           # app/build.gradle.kts reads this when google.webClientId is missing
           # from local.properties and ~/.gradle/gradle.properties. The repo
           # variable is intentionally public (the web client id is on every
           # signed-in APK's manifest).
           GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID || '' }}
-        run: ./gradlew :app:assembleDebug --console=plain --no-daemon
+          KEYSTORE_PATH: ${{ runner.temp }}/teramera-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --console=plain --no-daemon
+
+      - name: Verify APK signature
+        run: |
+          set -e
+          APK=app/build/outputs/apk/release/app-release.apk
+          APKSIGNER=$(ls "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK" || { echo "::error::release APK is not signed"; exit 1; }
 
       - name: Ship APK into worker assets
         run: |
           mkdir -p worker/public
-          cp app/build/outputs/apk/debug/app-debug.apk worker/public/teramera.apk
+          cp app/build/outputs/apk/release/app-release.apk worker/public/teramera.apk
           ls -la worker/public/teramera.apk
 
       - name: Deploy Worker
@@ -157,17 +182,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NOTES=$(cat <<EOF
-          v${{ steps.tag.outputs.name }} — auto-built release.
+          v${{ steps.tag.outputs.name }} — signed release build.
 
-          Built on macos-latest, deployed via wrangler (if secrets are configured).
-          The Worker serves \`/teramera.apk\` from this build; existing apps detect it via \`/app/version\`.
+          Built on macos-latest, signed with the teramera release key, and deployed via wrangler
+          (if secrets are configured). The Worker serves \`/teramera.apk\` from this build; existing
+          apps detect it via \`/app/version\`.
           EOF
           )
-          # Upload under both names: the worker-served `teramera.apk` and the
-          # raw `app-debug.apk` for anyone who wants the original artifact.
+          # Same bytes under two names: `teramera.apk` (what the Worker serves)
+          # and `teramera-release.apk` (the artifact, clearly labelled).
           gh release create "${{ steps.tag.outputs.name }}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "${{ steps.tag.outputs.name }}" \
             --notes "${NOTES}" \
             worker/public/teramera.apk#teramera.apk \
-            app/build/outputs/apk/debug/app-debug.apk#app-debug.apk
+            app/build/outputs/apk/release/app-release.apk#teramera-release.apk

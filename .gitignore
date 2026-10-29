@@ -31,6 +31,12 @@ worker/node_modules/
 .dev.vars
 .wrangler/
 
+# release signing material — never commit
+keystore.properties
+keys/
+*.jks
+*.keystore
+
 # personal scratch scripts
 scratch/
 .idea/deviceManager.xml
