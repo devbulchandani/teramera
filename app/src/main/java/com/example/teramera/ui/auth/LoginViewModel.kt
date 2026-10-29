@@ -13,6 +13,7 @@ import javax.inject.Inject
 data class LoginUiState(
     val loading: Boolean = false,
     val error: String? = null,
+    val offerAddAccount: Boolean = false,
 )
 
 /**
@@ -30,7 +31,7 @@ class LoginViewModel @Inject constructor(
 
     fun googleLogin(idToken: String, onLoggedIn: () -> Unit) {
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+            _state.update { it.copy(loading = true, error = null, offerAddAccount = false) }
             authRepository.googleLogin(idToken).fold(
                 onSuccess = { onLoggedIn() },
                 onFailure = { failure ->
@@ -40,8 +41,8 @@ class LoginViewModel @Inject constructor(
         }
     }
 
-    fun googleError(message: String) =
-        _state.update { it.copy(loading = false, error = message) }
+    fun googleError(message: String, offerAddAccount: Boolean = false) =
+        _state.update { it.copy(loading = false, error = message, offerAddAccount = offerAddAccount) }
 
     private fun friendly(failure: Throwable): String {
         val raw = failure.message ?: ""

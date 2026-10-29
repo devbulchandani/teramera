@@ -1,7 +1,10 @@
 package com.example.teramera.ui.auth
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,6 +70,14 @@ fun LoginScreen(
 
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
+        val addGoogleAccount: () -> Unit = {
+            val addAccount = Intent(Settings.ACTION_ADD_ACCOUNT).apply {
+                putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+            }
+            runCatching { context.startActivity(addAccount) }
+                .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) } }
+            Unit
+        }
 
         Button(
             onClick = {
@@ -97,11 +109,18 @@ fun LoginScreen(
                     } catch (_: GetCredentialCancellationException) {
                         // account picker dismissed — nothing to do
                     } catch (e: GetCredentialException) {
-                        viewModel.googleError(
-                            if (e.type.endsWith("NO_CREDENTIAL"))
-                                "No Google account available on this device."
-                            else "Google sign-in failed — try again."
-                        )
+                        when {
+                            e.type.endsWith("NO_CREDENTIAL") -> viewModel.googleError(
+                                "No Google account on this device. Add one, then try again.",
+                                offerAddAccount = true,
+                            )
+                            e.type.contains("NO_PROVIDER") || e.type.contains("PROVIDER_CONFIGURATION") ->
+                                viewModel.googleError(
+                                    "Google Play services is missing or out of date. Update it, then try again.",
+                                    offerAddAccount = true,
+                                )
+                            else -> viewModel.googleError("Google sign-in failed — try again.")
+                        }
                     } catch (e: Exception) {
                         viewModel.googleError(e.message ?: "Google sign-in failed")
                     }
@@ -118,12 +137,16 @@ fun LoginScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        ErrorBanner(state.error)
+        ErrorBanner(state.error, state.offerAddAccount, addGoogleAccount)
     }
 }
 
 @Composable
-private fun ErrorBanner(message: String?) {
+private fun ErrorBanner(
+    message: String?,
+    offerAddAccount: Boolean,
+    onAddAccount: () -> Unit,
+) {
     message?.let {
         androidx.compose.material3.Surface(
             shape = MaterialTheme.shapes.medium,
@@ -132,12 +155,18 @@ private fun ErrorBanner(message: String?) {
                 .fillMaxWidth()
                 .padding(top = 16.dp),
         ) {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier.padding(12.dp),
-            )
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                if (offerAddAccount) {
+                    TextButton(onClick = onAddAccount, contentPadding = PaddingValues(0.dp)) {
+                        Text("Add Google account", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
         }
     }
 }
