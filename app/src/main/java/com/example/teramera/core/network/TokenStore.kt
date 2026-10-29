@@ -23,6 +23,7 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
     private val accessKey = stringPreferencesKey("access_token")
     private val refreshKey = stringPreferencesKey("refresh_token")
     private val userIdKey = stringPreferencesKey("user_id")
+    private val avatarKey = stringPreferencesKey("avatar_url")
 
     val tokens: Flow<AuthTokens?> = context.tokenDataStore.data.map { prefs ->
         val access = prefs[accessKey] ?: return@map null
@@ -30,11 +31,26 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
         AuthTokens(access, refresh, prefs[userIdKey] ?: "")
     }
 
-    suspend fun save(tokens: AuthTokens) {
+    /** Profile picture URL from the Google account, when the provider returns one. */
+    val avatarUrl: Flow<String?> = context.tokenDataStore.data.map { it[avatarKey] }
+
+    /**
+     * [clearAvatar] is only true on a fresh sign-in: a token refresh must not
+     * erase the profile picture that is already stored.
+     */
+    suspend fun save(
+        tokens: AuthTokens,
+        avatarUrl: String? = null,
+        clearAvatar: Boolean = false,
+    ) {
         context.tokenDataStore.edit { prefs ->
             prefs[accessKey] = tokens.accessToken
             prefs[refreshKey] = tokens.refreshToken
             prefs[userIdKey] = tokens.userId
+            when {
+                !avatarUrl.isNullOrBlank() -> prefs[avatarKey] = avatarUrl
+                clearAvatar -> prefs.remove(avatarKey)
+            }
         }
     }
 

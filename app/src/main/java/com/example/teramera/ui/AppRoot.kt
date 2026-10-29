@@ -91,7 +91,10 @@ private data class NavItem(
 )
 
 @Composable
-fun AppRoot() {
+fun AppRoot(
+    darkTheme: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+    onToggleTheme: () -> Unit = {},
+) {
     val sessionViewModel: SessionViewModel = hiltViewModel()
     val loggedIn by sessionViewModel.isLoggedIn.collectAsStateWithLifecycle(initialValue = null)
     val availableUpdate by sessionViewModel.availableUpdate.collectAsStateWithLifecycle()
@@ -117,7 +120,7 @@ fun AppRoot() {
             )
         }
         false -> LoginScreen(onLoggedIn = { /* isLoggedIn flow flips the gate */ })
-        true -> MainApp(loggedIn, sessionViewModel)
+        true -> MainApp(loggedIn, sessionViewModel, darkTheme, onToggleTheme)
     }
 
     availableUpdate?.let { update ->
@@ -204,7 +207,12 @@ class SessionViewModel @Inject constructor(
 }
 
 @Composable
-private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
+private fun MainApp(
+    loggedIn: Boolean?,
+    sessionViewModel: SessionViewModel,
+    darkTheme: Boolean,
+    onToggleTheme: () -> Unit,
+) {
     // refresh server state on every entry into the app + check for updates
     androidx.compose.runtime.LaunchedEffect(Unit) { sessionViewModel.refresh() }
 
@@ -302,6 +310,8 @@ private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
             composable(Routes.HOME) {
                 HomeScreen(
                     onOpenGroup = { groupId -> navController.navigate(Routes.groupDetail(groupId)) },
+                    darkTheme = darkTheme,
+                    onToggleTheme = onToggleTheme,
                     onLogout = {
                         sessionViewModel.logout {
                             navController.navigate(Routes.HOME) { popUpTo(0) }

@@ -3,6 +3,7 @@ package com.example.teramera.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teramera.BuildConfig
+import com.example.teramera.core.network.TokenStore
 import com.example.teramera.core.update.AppUpdateManager
 import com.example.teramera.core.update.UpdateInfo
 import com.example.teramera.data.repository.BalanceEntry
@@ -24,6 +25,7 @@ data class HomeUiState(
     val groups: List<BalanceEntry> = emptyList(),
     val selfName: String = "",
     val selfUpiId: String = "",
+    val selfPhotoUrl: String? = null,
     val profileSaved: Boolean = false,
     val lastSyncAt: Long? = null,
 ) {
@@ -45,6 +47,7 @@ class HomeViewModel @Inject constructor(
     private val repository: HomeRepository,
     private val syncRepository: SyncRepository,
     private val updateManager: AppUpdateManager,
+    private val tokenStore: TokenStore,
 ) : ViewModel() {
 
     private val profileStatus = MutableStateFlow(false)
@@ -78,18 +81,21 @@ class HomeViewModel @Inject constructor(
 
     val uiState: StateFlow<HomeUiState> =
         combine(
-            repository.homeData(),
-            repository.syncedHomeData(),
-            repository.selfUser(),
-            profileStatus,
-            syncRepository.lastSyncAt,
-        ) { local, synced, self, _, syncedAt ->
-            from(synced ?: local).copy(
-                selfName = self?.name?.ifEmpty { "You" } ?: "You",
-                selfUpiId = self?.upiId.orEmpty(),
-                lastSyncAt = syncedAt,
-            )
-        }
+            combine(
+                repository.homeData(),
+                repository.syncedHomeData(),
+                repository.selfUser(),
+                profileStatus,
+                syncRepository.lastSyncAt,
+            ) { local, synced, self, _, syncedAt ->
+                from(synced ?: local).copy(
+                    selfName = self?.name?.ifEmpty { "You" } ?: "You",
+                    selfUpiId = self?.upiId.orEmpty(),
+                    lastSyncAt = syncedAt,
+                )
+            },
+            tokenStore.avatarUrl,
+        ) { state, avatarUrl -> state.copy(selfPhotoUrl = avatarUrl) }
             .flowOn(kotlinx.coroutines.Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 

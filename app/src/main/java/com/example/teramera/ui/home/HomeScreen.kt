@@ -1,6 +1,8 @@
 package com.example.teramera.ui.home
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +22,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,7 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -45,11 +50,15 @@ import com.example.teramera.data.repository.BalanceEntry
 import com.example.teramera.ui.components.Baanto
 import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.components.EmptyState
+import com.example.teramera.ui.components.GroupMascot
 import com.example.teramera.ui.components.InkHeader
 import com.example.teramera.ui.components.PowerIcon
 import com.example.teramera.ui.theme.Ink900
+import com.example.teramera.ui.theme.Mint
+import com.example.teramera.ui.theme.Peach
 import com.example.teramera.ui.theme.Paper100
 import com.example.teramera.ui.theme.TerameraTheme
+import coil.compose.SubcomposeAsyncImage
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -59,6 +68,8 @@ fun HomeScreen(
     onAddExpense: () -> Unit = {},
     onOpenGroup: (String) -> Unit = {},
     onLogout: () -> Unit = {},
+    darkTheme: Boolean = false,
+    onToggleTheme: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val updateCheck by viewModel.updateCheck.collectAsStateWithLifecycle()
@@ -70,6 +81,8 @@ fun HomeScreen(
         onAddExpense = onAddExpense,
         onOpenGroup = onOpenGroup,
         onLogout = onLogout,
+        darkTheme = darkTheme,
+        onToggleTheme = onToggleTheme,
         onSaveProfile = viewModel::saveProfile,
         onCheckForUpdates = viewModel::checkForUpdates,
         onInstallUpdate = viewModel::installUpdate,
@@ -88,6 +101,8 @@ fun HomeContent(
     onAddExpense: () -> Unit = {},
     onOpenGroup: (String) -> Unit = {},
     onLogout: () -> Unit = {},
+    darkTheme: Boolean = false,
+    onToggleTheme: () -> Unit = {},
     onSaveProfile: (name: String, upiId: String) -> Unit = { _, _ -> },
     onCheckForUpdates: () -> Unit = {},
     onInstallUpdate: (com.example.teramera.core.update.UpdateInfo) -> Unit = {},
@@ -104,6 +119,8 @@ fun HomeContent(
             onOpenProfile = { profileOpen = true },
             versionName = versionName,
             onOpenVersion = { versionOpen = true },
+            darkTheme = darkTheme,
+            onToggleTheme = onToggleTheme,
         )
         if (profileOpen) {
             ProfileDialog(
@@ -197,6 +214,8 @@ internal fun TopBar(
     onOpenProfile: () -> Unit = {},
     versionName: String = com.example.teramera.BuildConfig.VERSION_NAME,
     onOpenVersion: () -> Unit = {},
+    darkTheme: Boolean = false,
+    onToggleTheme: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val cream = MaterialTheme.colorScheme.inverseOnSurface
@@ -232,7 +251,12 @@ internal fun TopBar(
                                 role = Role.Button
                             },
                     ) {
-                        Avatar(initials = initialsOfName(state.selfName.ifEmpty { "You" }), isViolet = false, size = 44.dp)
+                        ProfileAvatar(
+                            initials = initialsOfName(state.selfName.ifEmpty { "You" }),
+                            photoUrl = state.selfPhotoUrl,
+                            size = 44.dp,
+                            borderColor = cream.copy(alpha = 0.28f),
+                        )
                     }
                     androidx.compose.material3.DropdownMenu(
                         expanded = menuOpen,
@@ -244,6 +268,16 @@ internal fun TopBar(
                                 menuOpen = false
                                 onOpenProfile()
                             },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Dark mode") },
+                            trailingIcon = {
+                                Switch(
+                                    checked = darkTheme,
+                                    onCheckedChange = { onToggleTheme() },
+                                )
+                            },
+                            onClick = { onToggleTheme() },
                         )
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("App version") },
@@ -294,49 +328,75 @@ private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long, la
     val ink = MaterialTheme.colorScheme.inverseSurface
     val cream = MaterialTheme.colorScheme.inverseOnSurface
 
-    Column(
+    Box(
         modifier = Modifier
             .padding(horizontal = 20.dp, vertical = 16.dp)
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
-            .background(ink)
-            .padding(20.dp),
+            .background(ink),
     ) {
-        Text(
-            text = if (netMinor >= 0) "You are owed in total" else "You owe in total",
-            style = MaterialTheme.typography.bodyMedium,
-            color = cream.copy(alpha = 0.82f),
-        )
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                "₹",
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.primary,
+        // Brand shapes: peach and mint never blend into a gradient, they sit as
+        // separate low-alpha forms behind the numbers.
+        Canvas(Modifier.matchParentSize()) {
+            drawCircle(
+                color = Peach.copy(alpha = 0.20f),
+                radius = size.width * 0.34f,
+                center = Offset(size.width * 1.02f, -size.height * 0.08f),
             )
-            Spacer(Modifier.width(2.dp))
-            Text(
-                text = formatInr(kotlin.math.abs(netMinor)),
-                style = MaterialTheme.typography.displayLarge,
-                color = cream,
+            drawCircle(
+                color = Mint.copy(alpha = 0.14f),
+                radius = size.width * 0.22f,
+                center = Offset(size.width * 0.02f, size.height * 1.02f),
             )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 14.dp)) {
-            HeroChip(
-                label = "Owed ₹${formatInr(owedToYouMinor)}",
-                tint = MaterialTheme.colorScheme.secondary,
+            drawCircle(
+                color = Peach.copy(alpha = 0.16f),
+                radius = size.width * 0.16f,
+                center = Offset(size.width * 0.82f, size.height * 0.98f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()),
             )
-            HeroChip(
-                label = "You owe ₹${formatInr(youOweMinor)}",
-                tint = MaterialTheme.colorScheme.primary,
+            drawCircle(
+                color = cream.copy(alpha = 0.10f),
+                radius = size.width * 0.05f,
+                center = Offset(size.width * 0.62f, size.height * 0.18f),
             )
         }
-        if (lastSyncAt != null) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                "Updated ${com.example.teramera.core.time.TimeFormat.relative(lastSyncAt)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = cream.copy(alpha = 0.62f),
-                modifier = Modifier.padding(top = 12.dp),
+                text = if (netMinor >= 0) "You are owed in total" else "You owe in total",
+                style = MaterialTheme.typography.bodyMedium,
+                color = cream.copy(alpha = 0.82f),
             )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    "₹",
+                    style = MaterialTheme.typography.displayLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(2.dp))
+                Text(
+                    text = formatInr(kotlin.math.abs(netMinor)),
+                    style = MaterialTheme.typography.displayLarge,
+                    color = cream,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 14.dp)) {
+                HeroChip(
+                    label = "Owed ₹${formatInr(owedToYouMinor)}",
+                    tint = MaterialTheme.colorScheme.secondary,
+                )
+                HeroChip(
+                    label = "You owe ₹${formatInr(youOweMinor)}",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            if (lastSyncAt != null) {
+                Text(
+                    "Updated ${com.example.teramera.core.time.TimeFormat.relative(lastSyncAt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cream.copy(alpha = 0.62f),
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
         }
     }
 }
@@ -396,7 +456,7 @@ private fun BalanceCard(entries: List<BalanceEntry>, onOpen: (BalanceEntry) -> U
             .padding(horizontal = 16.dp),
     ) {
         entries.forEachIndexed { index, entry ->
-            BalanceRow(entry, onClick = { onOpen(entry) })
+            BalanceRow(entry, index = entry.id.hashCode(), onClick = { onOpen(entry) })
             if (index != entries.lastIndex) HorizontalHairline()
         }
     }
@@ -413,7 +473,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun BalanceRow(entry: BalanceEntry, onClick: () -> Unit = {}) {
+private fun BalanceRow(entry: BalanceEntry, index: Int = 0, onClick: () -> Unit = {}) {
     val positive = entry.amountMinor > 0
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -422,7 +482,11 @@ private fun BalanceRow(entry: BalanceEntry, onClick: () -> Unit = {}) {
             .heightIn(min = 64.dp)
             .clickable(onClick = onClick),
     ) {
-        Avatar(initials = entry.initials, isViolet = entry.isViolet, size = 44.dp)
+        if (entry.isGroup) {
+            GroupMascot(index = index, size = 44.dp)
+        } else {
+            Avatar(initials = entry.initials, isViolet = entry.isViolet, size = 44.dp)
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(entry.name, style = MaterialTheme.typography.titleMedium)
@@ -478,6 +542,30 @@ internal fun Avatar(initials: String, isViolet: Boolean, size: androidx.compose.
             color = Ink900,
         )
     }
+}
+
+@Composable
+private fun ProfileAvatar(
+    initials: String,
+    photoUrl: String?,
+    size: androidx.compose.ui.unit.Dp,
+    borderColor: Color,
+) {
+    if (photoUrl.isNullOrBlank()) {
+        Avatar(initials = initials, isViolet = false, size = size)
+        return
+    }
+    SubcomposeAsyncImage(
+        model = photoUrl,
+        contentDescription = "Profile picture",
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .border(2.dp, borderColor, CircleShape),
+        loading = { Avatar(initials = initials, isViolet = false, size = size) },
+        error = { Avatar(initials = initials, isViolet = false, size = size) },
+    )
 }
 
 // Minor units are paise. Whole rupees when exact, otherwise shown to the paisa

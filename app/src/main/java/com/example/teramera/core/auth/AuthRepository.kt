@@ -20,13 +20,17 @@ class AuthRepository @Inject constructor(
     /** null while the session state is being restored, true/false once known. */
     val isLoggedIn: Flow<Boolean?> = tokenStore.tokens.map { it != null }
 
-    suspend fun googleLogin(idToken: String): Result<Unit> =
+    suspend fun googleLogin(idToken: String, avatarUrl: String? = null): Result<Unit> =
         try {
             val tokens = authApi.googleLogin(GoogleLoginRequestDto(idToken))
             // Signing in as someone else must not surface the previous account's
             // cached balances/groups/activity while the first sync is in flight.
             dao.clearAccountData()
-            tokenStore.save(AuthTokens(tokens.accessToken, tokens.refreshToken, tokens.userId))
+            tokenStore.save(
+                AuthTokens(tokens.accessToken, tokens.refreshToken, tokens.userId),
+                avatarUrl = avatarUrl,
+                clearAvatar = true,
+            )
             Result.success(Unit)
         } catch (e: retrofit2.HttpException) {
             // surface the backend's human-readable reason (audience mismatch etc.)

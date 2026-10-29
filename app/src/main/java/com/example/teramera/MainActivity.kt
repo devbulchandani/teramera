@@ -8,10 +8,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.ui.AppRoot
 import com.example.teramera.ui.theme.TerameraTheme
+import com.example.teramera.ui.theme.ThemeViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -27,8 +32,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         setContent {
-            TerameraTheme {
-                AppRoot()
+            val themeViewModel: ThemeViewModel = hiltViewModel()
+            val preference by themeViewModel.darkTheme.collectAsStateWithLifecycle(initialValue = null)
+            val darkTheme = preference ?: isSystemInDarkTheme()
+            TerameraTheme(darkTheme = darkTheme) {
+                AppRoot(
+                    darkTheme = darkTheme,
+                    onToggleTheme = { themeViewModel.setDarkTheme(!darkTheme) },
+                )
             }
         }
     }

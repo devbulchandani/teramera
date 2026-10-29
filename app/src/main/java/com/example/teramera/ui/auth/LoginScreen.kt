@@ -118,13 +118,17 @@ fun LoginScreen(
                         // CredentialManager usually wraps the token in a CustomCredential —
                         // unwrap via createFrom() instead of a direct cast.
                         val credential = result.credential
-                        val idToken = when {
-                            credential is GoogleIdTokenCredential -> credential.idToken
+                        val google = when {
+                            credential is GoogleIdTokenCredential -> credential
                             credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ->
-                                GoogleIdTokenCredential.createFrom(credential.data).idToken
+                                GoogleIdTokenCredential.createFrom(credential.data)
                             else -> throw IllegalStateException("Unexpected credential type: ${credential.type}")
                         }
-                        viewModel.googleLogin(idToken, onLoggedIn)
+                        viewModel.googleLogin(
+                            idToken = google.idToken,
+                            avatarUrl = google.profilePictureUri?.toString(),
+                            onLoggedIn = onLoggedIn,
+                        )
                     } catch (_: GetCredentialCancellationException) {
                         // account picker dismissed — nothing to do
                     } catch (e: GetCredentialException) {

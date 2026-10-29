@@ -3,20 +3,16 @@ package com.example.teramera.ui.groups
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -36,15 +32,12 @@ import com.example.teramera.data.repository.BalanceEntry
 import com.example.teramera.ui.components.Baanto
 import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.components.EmptyState
+import com.example.teramera.ui.components.GroupMascot
 import com.example.teramera.ui.components.HeaderIconButton
 import com.example.teramera.ui.components.InkHeader
 import com.example.teramera.ui.components.PlusIcon
 import com.example.teramera.ui.home.formatInr
-import com.example.teramera.ui.theme.Butter
-import com.example.teramera.ui.theme.Ink900
-import com.example.teramera.ui.theme.Mint
 import com.example.teramera.ui.theme.Paper100
-import com.example.teramera.ui.theme.Peach
 
 @Composable
 fun GroupsScreen(
@@ -98,8 +91,8 @@ fun GroupsScreen(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            itemsIndexed(state.groups, key = { _, group -> group.id }) { index, group ->
-                GroupCard(group = group, index = index, onClick = { onOpenGroup(group.id) })
+            items(state.groups, key = { it.id }) { group ->
+                GroupCard(group = group, onClick = { onOpenGroup(group.id) })
             }
             if (state.groups.isEmpty()) {
                 item {
@@ -129,12 +122,7 @@ fun GroupsScreen(
 }
 
 @Composable
-private fun GroupCard(group: BalanceEntry, index: Int, onClick: () -> Unit) {
-    val tone = when (index % 3) {
-        0 -> Peach
-        1 -> Mint
-        else -> Butter
-    }
+private fun GroupCard(group: BalanceEntry, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -144,20 +132,7 @@ private fun GroupCard(group: BalanceEntry, index: Int, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(16.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(tone),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                group.initials,
-                color = Ink900,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-            )
-        }
+        GroupMascot(index = group.id.hashCode(), size = 56.dp)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(group.name, style = MaterialTheme.typography.titleMedium)

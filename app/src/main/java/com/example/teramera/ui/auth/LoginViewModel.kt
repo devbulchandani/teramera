@@ -29,10 +29,10 @@ class LoginViewModel @Inject constructor(
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state
 
-    fun googleLogin(idToken: String, onLoggedIn: () -> Unit) {
+    fun googleLogin(idToken: String, avatarUrl: String?, onLoggedIn: () -> Unit) {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, offerAddAccount = false) }
-            authRepository.googleLogin(idToken).fold(
+            authRepository.googleLogin(idToken, avatarUrl).fold(
                 onSuccess = { onLoggedIn() },
                 onFailure = { failure ->
                     _state.update { it.copy(loading = false, error = friendly(failure)) }
