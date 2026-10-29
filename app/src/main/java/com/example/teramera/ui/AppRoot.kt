@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -73,11 +72,36 @@ private data class NavItem(
 fun AppRoot() {
     val sessionViewModel: SessionViewModel = hiltViewModel()
     val loggedIn by sessionViewModel.isLoggedIn.collectAsStateWithLifecycle(initialValue = null)
+    val availableUpdate by sessionViewModel.availableUpdate.collectAsStateWithLifecycle()
+
+    // Update checks must not depend on being signed in — a broken sign-in is
+    // exactly when a newer build matters most.
+    androidx.compose.runtime.LaunchedEffect(Unit) { sessionViewModel.checkForUpdate() }
 
     when (loggedIn) {
         null -> Box(Modifier.fillMaxSize()) // restoring session
         false -> LoginScreen(onLoggedIn = { /* isLoggedIn flow flips the gate */ })
         true -> MainApp(loggedIn, sessionViewModel)
+    }
+
+    availableUpdate?.let { update ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { sessionViewModel.dismissUpdate() },
+            shape = MaterialTheme.shapes.large,
+            title = { Text("Update teramera") },
+            text = { Text("Version ${update.versionName} is available. Update for the latest fixes and features.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    sessionViewModel.dismissUpdate()
+                    sessionViewModel.startUpdate(update.apkUrl)
+                }) { Text("Update", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { sessionViewModel.dismissUpdate() }) {
+                    Text("Later")
+                }
+            },
+        )
     }
 }
 
@@ -101,6 +125,13 @@ class SessionViewModel @Inject constructor(
             syncRepository.refreshNow()
             _availableUpdate.value = updateManager.checkForUpdate(BuildConfig.VERSION_CODE)
             registerPushToken()
+        }
+    }
+
+    /** Silent update check that runs even before sign-in. */
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            _availableUpdate.value = updateManager.checkForUpdate(BuildConfig.VERSION_CODE)
         }
     }
 
@@ -140,28 +171,7 @@ class SessionViewModel @Inject constructor(
 @Composable
 private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
     // refresh server state on every entry into the app + check for updates
-    val availableUpdate by sessionViewModel.availableUpdate.collectAsState()
     androidx.compose.runtime.LaunchedEffect(Unit) { sessionViewModel.refresh() }
-
-    availableUpdate?.let { update ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { sessionViewModel.dismissUpdate() },
-            shape = MaterialTheme.shapes.large,
-            title = { Text("Update teramera") },
-            text = { Text("Version ${update.versionName} is available. Update for the latest fixes and features.") },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    sessionViewModel.dismissUpdate()
-                    sessionViewModel.startUpdate(update.apkUrl)
-                }) { Text("Update", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { sessionViewModel.dismissUpdate() }) {
-                    Text("Later")
-                }
-            },
-        )
-    }
 
     val navController = rememberNavController()
 
