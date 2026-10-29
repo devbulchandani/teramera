@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera-ink — add expense prototype</title>
+<link rel="stylesheet" href="../../design-systems/teramera-ink/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); padding: 40px 24px 96px; transition: background var(--t-med), color var(--t-med); }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header.page { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-bottom: 28px; }
+  h1 { font-family: var(--font-display); font-size: 42px; font-weight: 800; letter-spacing: -1.4px; }
+  .lede { color: var(--fg-2); font-size: 15px; line-height: 1.6; max-width: 620px; margin-top: 8px; }
+  .theme-btn { border: 1px solid var(--border-strong); background: var(--surface); color: var(--fg); font-family: var(--font-ui); font-size: 13px; font-weight: 600; padding: 11px 18px; border-radius: var(--r-pill); cursor: pointer; min-height: 44px; }
+
+  .layout { display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; }
+  .phone { width: 390px; height: 844px; background: var(--bg); border-radius: 44px; overflow: hidden; position: relative;
+    box-shadow: 0 26px 60px oklch(0.19 0.028 285 / 0.25), 0 0 0 10px oklch(0.17 0.03 285), 0 0 0 12px oklch(0.32 0.03 285);
+    display: flex; flex-direction: column; flex-shrink: 0; }
+  .statusbar { display: flex; justify-content: space-between; padding: 14px 28px 4px; font-size: 14px; font-weight: 600; position: absolute; top: 0; left: 0; right: 0; z-index: 9; color: var(--paper-100); }
+
+  .sheet-head { position: absolute; top: 0; left: 0; right: 0; height: 286px; background: var(--ink-900); border-radius: 0 0 46px 42% / 0 0 34px 46px; z-index: 1; }
+  .head-inner { position: relative; z-index: 4; padding: 40px 20px 0; color: var(--paper-100); }
+  .head-row { display: flex; align-items: center; gap: 10px; }
+  .head-row .spacer { flex: 1; }
+  .head-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+  .icon-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; background: oklch(1 0 0 / .12); color: var(--paper-100); display: grid; place-items: center; cursor: pointer; }
+  .dots { display: flex; gap: 6px; margin: 14px 0 0 4px; }
+  .dot { width: 26px; height: 5px; border-radius: 999px; background: oklch(1 0 0 / .18); transition: background var(--t-fast), width var(--t-fast); }
+  .dot.on { background: var(--peach); width: 38px; }
+
+  .body { position: relative; z-index: 2; flex: 1; overflow-y: auto; padding: 0 18px 116px; }
+  .inkspace { height: 118px; }
+  .amount-wrap { text-align: center; color: var(--paper-100); position: relative; z-index: 3; }
+  .group-pill { display: inline-flex; align-items: center; gap: 6px; background: oklch(1 0 0 / .10); color: var(--paper-100); font-size: 12px; font-weight: 600; padding: 8px 14px; border-radius: var(--r-pill); }
+  .amount { font-family: var(--font-display); font-size: 56px; font-weight: 800; letter-spacing: -2px; margin-top: 10px; font-feature-settings: "tnum"; }
+  .amount .r { color: var(--peach); font-size: 30px; margin-right: 2px; }
+  .amount-hint { font-size: 12px; color: oklch(0.78 0.015 85); margin-top: 4px; }
+
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 26px; }
+  .key { height: 58px; border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-card); display: grid; place-items: center; font-family: var(--font-display); font-size: 22px; font-weight: 700; cursor: pointer; user-select: none; }
+  .key:active { transform: scale(.96); background: var(--surface-sunken); }
+  .key svg { width: 24px; height: 24px; }
+
+  .card { background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-card); padding: 18px; }
+  .field { background: var(--surface-sunken); border-radius: var(--r-md); padding: 16px; font-size: 16px; font-weight: 600; color: var(--fg); display: flex; align-items: center; gap: 10px; }
+  .field .ph { color: var(--fg-2); font-weight: 500; }
+  .field input { border: 0; background: transparent; font: inherit; color: var(--fg); width: 100%; outline: none; }
+  .field input::placeholder { color: var(--fg-2); font-weight: 500; }
+  .section { font-size: 12px; font-weight: 700; color: var(--fg-2); margin: 20px 0 10px; }
+
+  .people { display: flex; gap: 14px; overflow-x: auto; padding: 4px 0 6px; }
+  .person { text-align: center; flex-shrink: 0; cursor: pointer; }
+  .person .av { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px; color: var(--ink-900); position: relative; }
+  .person.on .av { box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--peach); }
+  .person .nm { font-size: 11px; font-weight: 600; margin-top: 6px; color: var(--fg-2); }
+  .person.on .nm { color: var(--fg); }
+
+  .splits { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .split { background: var(--surface-sunken); border-radius: var(--r-md); padding: 14px; cursor: pointer; border: 2px solid transparent; transition: border-color var(--t-fast), background var(--t-fast); }
+  .split.on { background: var(--accent-soft); border-color: var(--peach); }
+  .split .st { font-size: 14px; font-weight: 700; }
+  .split .sd { font-size: 11px; color: var(--fg-2); margin-top: 2px; }
+  .split .glyph { display: flex; gap: 3px; margin-bottom: 10px; }
+  .split .glyph i { height: 14px; border-radius: 4px; background: var(--fg-3); opacity: .5; width: 6px; }
+  .split.on .glyph i { background: var(--peach-deep); opacity: 1; }
+
+  .shares .row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .shares .row:last-child { border-bottom: 0; }
+  .shares .av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 12px; color: var(--ink-900); }
+  .shares .nm { font-size: 15px; font-weight: 600; }
+  .shares .mt { font-size: 11px; color: var(--fg-2); }
+  .shares .amt { margin-left: auto; font-family: var(--font-display); font-size: 16px; font-weight: 700; font-feature-settings: "tnum"; }
+
+  .cta { position: absolute; left: 18px; right: 18px; bottom: 26px; z-index: 7; }
+  .btn { width: 100%; min-height: 56px; border: 0; border-radius: var(--r-pill); background: var(--peach); color: var(--on-accent); font-family: var(--font-ui); font-size: 16px; font-weight: 700; cursor: pointer; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.ink { background: var(--ink-800); color: var(--paper-100); box-shadow: inset 0 0 0 1px var(--border-strong); }
+  [data-theme="dark"] .btn.ink { background: var(--ink-700); }
+
+  .review-total { font-family: var(--font-display); font-size: 44px; font-weight: 800; letter-spacing: -1.4px; font-feature-settings: "tnum"; }
+  .review-sub { font-size: 13px; color: var(--fg-2); margin-top: 2px; }
+  .mascot-row { display: flex; align-items: center; gap: 12px; }
+  .mascot-row .who { font-size: 13px; color: var(--fg-2); line-height: 1.4; }
+
+  /* side notes */
+  .notes { flex: 1; min-width: 280px; max-width: 460px; }
+  .notes h2 { font-family: var(--font-display); font-size: 24px; font-weight: 700; }
+  .notes p { color: var(--fg-2); font-size: 14px; line-height: 1.6; margin-top: 8px; }
+  .notes ul { margin: 18px 0 0 18px; color: var(--fg-2); font-size: 14px; line-height: 1.85; }
+  .notes li b { color: var(--fg); }
+  .swatches { display: flex; gap: 8px; margin-top: 22px; }
+  .sw { width: 44px; height: 44px; border-radius: 14px; box-shadow: inset 0 0 0 1px oklch(0 0 0 / .08); }
+  .hint { margin-top: 26px; font-size: 12px; color: var(--fg-3); }
+
+  [hidden] { display: none !important; }
+
+  /* dark: ink-900 equals the page, so lift ink surfaces one step */
+  [data-theme="dark"] .ink-head,
+  [data-theme="dark"] .sheet-head,
+  [data-theme="dark"] .hero,
+  [data-theme="dark"] .nav,
+  [data-theme="dark"] .floating-nav,
+  [data-theme="dark"] .nav-demo .blob {
+    background: var(--ink-800);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <div>
+      <h1>Add expense, rebuilt</h1>
+      <p class="lede">Full-height sheet, three steps, one decision per step. Amount on ink, split as four tiles, review before it hits the ledger. Tap through it.</p>
+    </div>
+    <button class="theme-btn" onclick="toggleTheme()">Toggle dark</button>
+  </header>
+
+  <div class="layout">
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>▲ ● ▮</span></div>
+      <div class="sheet-head"></div>
+
+      <div class="head-inner">
+        <div class="head-row">
+          <button class="icon-btn" id="backBtn" aria-label="Back" onclick="back()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+          <div class="spacer"></div>
+          <div class="head-title">Add expense</div>
+          <div class="spacer"></div>
+          <div data-baanto="idle" data-size="40" id="headMascot"></div>
+          <button class="icon-btn" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="dots"><span class="dot on" id="d1"></span><span class="dot" id="d2"></span><span class="dot" id="d3"></span></div>
+      </div>
+
+      <!-- STEP 1 -->
+      <div class="body" id="step1">
+        <div class="inkspace"></div>
+        <div class="amount-wrap">
+          <span class="group-pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/></svg>
+            Goa trip
+          </span>
+          <div class="amount"><span class="r">₹</span><span id="amountOut">0</span></div>
+          <div class="amount-hint">Equal split by default · 4 people</div>
+        </div>
+
+        <div class="keypad" id="keypad">
+          <div class="key" data-k="1">1</div><div class="key" data-k="2">2</div><div class="key" data-k="3">3</div>
+          <div class="key" data-k="4">4</div><div class="key" data-k="5">5</div><div class="key" data-k="6">6</div>
+          <div class="key" data-k="7">7</div><div class="key" data-k="8">8</div><div class="key" data-k="9">9</div>
+          <div class="key" data-k=".">.</div><div class="key" data-k="0">0</div>
+          <div class="key" data-k="del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6H9l-5 6 5 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1zM17 9l-4 6M13 9l4 6"/></svg></div>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="body" id="step2" hidden>
+        <div class="inkspace"></div>
+        <div class="card" style="margin-top:-56px;position:relative;z-index:3">
+          <label class="field" for="titleInput"><input id="titleInput" placeholder="What was it for?" autocomplete="off" /></label>
+          <div class="section">Who paid?</div>
+          <div class="people" id="payers">
+            <div class="person on" data-p="You"><div class="av" style="background:var(--peach)">D</div><div class="nm">You</div></div>
+            <div class="person" data-p="Priya"><div class="av" style="background:var(--mint)">PR</div><div class="nm">Priya</div></div>
+            <div class="person" data-p="Arjun"><div class="av" style="background:var(--butter)">AK</div><div class="nm">Arjun</div></div>
+            <div class="person" data-p="Meera"><div class="av" style="background:var(--peach-soft)">MK</div><div class="nm">Meera</div></div>
+          </div>
+        </div>
+
+        <div class="section">How to split?</div>
+        <div class="splits" id="splits">
+          <div class="split on" data-s="Equal"><div class="glyph"><i></i><i></i><i></i><i></i></div><div class="st">Equal</div><div class="sd">Everyone pays the same</div></div>
+          <div class="split" data-s="Exact"><div class="glyph"><i style="width:14px"></i><i style="width:8px"></i><i style="width:18px"></i></div><div class="st">Exact</div><div class="sd">Set each amount</div></div>
+          <div class="split" data-s="Percent"><div class="glyph"><i style="width:16px"></i><i style="width:10px"></i><i style="width:6px"></i><i style="width:12px"></i></div><div class="st">Percent</div><div class="sd">Split by percentage</div></div>
+          <div class="split" data-s="Shares"><div class="glyph"><i style="width:6px"></i><i style="width:12px"></i><i style="width:18px"></i><i style="width:9px"></i></div><div class="st">Shares</div><div class="sd">Weighted portions</div></div>
+        </div>
+
+        <div class="section">Included</div>
+        <div class="card">
+          <div class="shares" id="included">
+            <div class="row" data-inc="You"><div class="av" style="background:var(--peach)">D</div><div><div class="nm">You</div><div class="mt" data-role>paid</div></div><div class="amt" data-amt>—</div></div>
+            <div class="row" data-inc="Priya"><div class="av" style="background:var(--mint)">PR</div><div><div class="nm">Priya</div><div class="mt" data-role>included</div></div><div class="amt" data-amt>—</div></div>
+            <div class="row" data-inc="Arjun"><div class="av" style="background:var(--butter)">AK</div><div><div class="nm">Arjun</div><div class="mt" data-role>included</div></div><div class="amt" data-amt>—</div></div>
+            <div class="row" data-inc="Meera"><div class="av" style="background:var(--peach-soft)">MK</div><div><div class="nm">Meera</div><div class="mt" data-role>included</div></div><div class="amt" data-amt>—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="body" id="step3" hidden>
+        <div class="inkspace"></div>
+        <div class="card" style="margin-top:-56px;position:relative;z-index:3">
+          <div class="mascot-row">
+            <div data-baanto="pleased" data-size="64" data-no-coin></div>
+            <div>
+              <div class="review-sub">Splitting <b id="reviewGroup">Goa trip</b> · <span id="reviewSplit">equal</span></div>
+              <div class="review-total">₹<span id="reviewTotal">0</span></div>
+              <div class="review-sub">Paid by <span id="reviewPayer">You</span> · 4 people</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">Who owes what</div>
+        <div class="card"><div class="shares" id="reviewRows"></div></div>
+
+        <div class="section">When</div>
+        <div class="card"><div class="field" style="background:transparent;padding:0;font-weight:600">Today, 4:12 pm</div></div>
+      </div>
+
+      <div class="cta">
+        <button class="btn" id="nextBtn" onclick="next()" disabled>Continue</button>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h2>Why this replaces the old sheet</h2>
+      <p>The old add-expense was one long scrolling sheet: keypad, title, payer, split type, raw values, preview and validation all competing at once. This version makes one decision per screen and keeps the amount visible on ink.</p>
+      <ul>
+        <li><b>Ink header</b> holds the amount, group and mascot — the three things you check constantly.</li>
+        <li><b>Keypad</b> keys are real cards (56px targets), not floating numerals.</li>
+        <li><b>Split</b> is four tiles with a glyph, not four chips.</li>
+        <li><b>Review</b> shows the exact per-person share before saving, with Baanto pleased.</li>
+        <li><b>One CTA</b> per step, always in the same place, always peach.</li>
+        <li><b>Mascot</b> stays in the header on all three steps — not a 2-second loading flash.</li>
+      </ul>
+      <div class="swatches">
+        <div class="sw" style="background:var(--ink-900)"></div>
+        <div class="sw" style="background:var(--paper-000)"></div>
+        <div class="sw" style="background:var(--peach)"></div>
+        <div class="sw" style="background:var(--mint)"></div>
+        <div class="sw" style="background:var(--butter)"></div>
+      </div>
+      <p class="hint">Prototype: type an amount, pick a payer and split, then continue to the review.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const FACES = {
+  idle: `<circle cx="79" cy="97" r="6.5" fill="var(--ink-900)"/><circle cx="121" cy="97" r="6.5" fill="var(--ink-900)"/><path d="M86 118 q14 11 28 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/>`,
+  pleased: `<path d="M72 99 q7 -8 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M114 99 q7 -8 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M82 114 q18 19 36 0" fill="none" stroke="var(--ink-900)" stroke-width="5.5" stroke-linecap="round"/>`,
+  thinking: `<circle cx="79" cy="97" r="6.5" fill="var(--ink-900)"/><path d="M114 97 q7 6 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M92 122 h16" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><g fill="var(--fg-3)"><circle cx="150" cy="66" r="4"/><circle cx="160" cy="56" r="5.5"/><circle cx="174" cy="44" r="7"/></g>`,
+  sorry: `<path d="M72 94 q7 7 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M114 94 q7 7 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M86 126 q14 -11 28 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/>`
+};
+let seq = 0;
+function baanto(state = 'idle', size = 96, coin = true) {
+  const id = `b${++seq}`;
+  return `<svg viewBox="0 0 200 200" width="${size}" height="${size}" role="img" aria-label="Baanto, ${state}">
+    <defs><clipPath id="${id}"><circle cx="100" cy="105" r="60"/></clipPath></defs>
+    <g clip-path="url(#${id})"><rect width="200" height="200" fill="var(--peach)"/><rect x="100" y="-20" width="120" height="260" fill="var(--mint)" transform="rotate(-13 100 105)"/></g>
+    <circle cx="100" cy="105" r="60" fill="none" stroke="var(--paper-100)" stroke-opacity=".35" stroke-width="2"/>
+    ${FACES[state] || FACES.idle}
+    ${coin ? `<g><circle cx="163" cy="142" r="17" fill="var(--paper-100)" stroke="var(--ink-900)" stroke-width="2.5"/><text x="163" y="150" text-anchor="middle" font-family="Bricolage Grotesque, serif" font-size="19" font-weight="800" fill="var(--ink-900)">₹</text></g>` : ''}
+  </svg>`;
+}
+
+let step = 1;
+let amount = "";
+let payer = "You";
+let split = "Equal";
+const people = ["You", "Priya", "Arjun", "Meera"];
+const shades = { You: "var(--peach)", Priya: "var(--mint)", Arjun: "var(--butter)", Meera: "var(--peach-soft)" };
+const initials = { You: "D", Priya: "PR", Arjun: "AK", Meera: "MK" };
+
+function mountMascots(root = document) {
+  root.querySelectorAll('[data-baanto]').forEach((el) => {
+    if (el.dataset.done) return;
+    el.innerHTML = baanto(el.dataset.baanto, Number(el.dataset.size || 96), !('noCoin' in el.dataset));
+    el.dataset.done = "1";
+  });
+}
+
+function money(n) {
+  const frac = Math.abs(n % 1) > 0.001;
+  return n.toLocaleString("en-IN", {
+    minimumFractionDigits: frac ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+}
+function amountMinor() {
+  return Math.round((Number(amount) || 0) * 100);
+}
+function totalMajor() {
+  return amountMinor() / 100;
+}
+function weights() {
+  if (split === "Exact") return [0.5, 0.2, 0.2, 0.1];
+  if (split === "Percent") return [0.4, 0.2, 0.2, 0.2];
+  if (split === "Shares") return [1, 1, 2, 1];
+  return [1, 1, 1, 1];
+}
+function shares() {
+  const cents = amountMinor();
+  const w = weights();
+  const sum = w.reduce((a, b) => a + b, 0);
+  const raw = w.map((x) => (cents * x) / sum);
+  const base = raw.map((x) => Math.floor(x));
+  let rem = cents - base.reduce((a, b) => a + b, 0);
+  const order = raw
+    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < rem; k++) base[order[k % order.length].i] += 1;
+  return people.map((p, i) => ({ person: p, amount: base[i] / 100 }));
+}
+
+function render() {
+  document.getElementById("amountOut").textContent = amount === "" ? "0" : amount;
+  document.getElementById("nextBtn").disabled = step === 1 ? amountMinor() <= 0 : false;
+  document.getElementById("nextBtn").textContent =
+    step === 1 ? "Continue" : step === 2 ? "Review split" : "Split ₹" + money(totalMajor());
+  document.getElementById("backBtn").style.visibility = step === 1 ? "hidden" : "visible";
+  document.getElementById("d1").className = "dot" + (step === 1 ? " on" : "");
+  document.getElementById("d2").className = "dot" + (step === 2 ? " on" : "");
+  document.getElementById("d3").className = "dot" + (step === 3 ? " on" : "");
+  document.getElementById("step1").hidden = step !== 1;
+  document.getElementById("step2").hidden = step !== 2;
+  document.getElementById("step3").hidden = step !== 3;
+  document.getElementById("headMascot").innerHTML = baanto(step === 3 ? "pleased" : "idle", 40);
+  document.getElementById("reviewTotal").textContent = money(totalMajor());
+  document.getElementById("reviewPayer").textContent = payer;
+  document.getElementById("reviewSplit").textContent = split.toLowerCase();
+  const rows = shares();
+  document.getElementById("reviewRows").innerHTML = rows.map((s) => {
+    const you = s.person === "You";
+    const paid = s.person === payer;
+    const role = paid ? "paid" : you ? "your share" : `owes ${payer === "You" ? "you" : payer}`;
+    return `<div class="row"><div class="av" style="background:${shades[s.person]}">${initials[s.person]}</div>
+      <div><div class="nm">${you ? "You" : s.person}</div><div class="mt">${role}</div></div>
+      <div class="amt">₹${money(s.amount)}</div></div>`;
+  }).join("");
+  document.querySelectorAll("#included [data-inc]").forEach((row) => {
+    const p = row.dataset.inc;
+    const share = rows.find((s) => s.person === p);
+    const role = row.querySelector("[data-role]");
+    if (role) role.textContent = p === payer ? "paid" : p === "You" ? "your share" : `owes ${payer === "You" ? "you" : payer}`;
+    const amt = row.querySelector("[data-amt]");
+    if (amt) amt.textContent = "₹" + money(share.amount);
+  });
+}
+
+function next() {
+  if (step < 3) { step++; render(); return; }
+  document.getElementById("nextBtn").textContent = "Saved";
+  document.getElementById("nextBtn").classList.add("ink");
+  document.getElementById("nextBtn").disabled = true;
+  document.getElementById("headMascot").innerHTML = baanto("pleased", 40);
+}
+function back() { if (step > 1) { step--; render(); } }
+
+document.getElementById("keypad").addEventListener("click", (e) => {
+  const key = e.target.closest(".key");
+  if (!key) return;
+  const k = key.dataset.k;
+  if (k === "del") { amount = amount.slice(0, -1); }
+  else if (k === ".") { if (!amount.includes(".") && amount !== "") amount += "."; }
+  else if (amount.length < 9) {
+    const dot = amount.indexOf(".");
+    if (dot >= 0 && amount.length > dot + 2) return;
+    amount = amount === "0" ? k : amount + k;
+  }
+  render();
+});
+
+document.getElementById("payers").addEventListener("click", (e) => {
+  const p = e.target.closest(".person");
+  if (!p) return;
+  payer = p.dataset.p;
+  document.querySelectorAll("#payers .person").forEach((el) => el.classList.toggle("on", el === p));
+  render();
+});
+
+document.getElementById("splits").addEventListener("click", (e) => {
+  const s = e.target.closest(".split");
+  if (!s) return;
+  split = s.dataset.s;
+  document.querySelectorAll("#splits .split").forEach((el) => el.classList.toggle("on", el === s));
+  render();
+});
+
+document.addEventListener("click", (e) => {
+  // re-mount any mascot rendered after initial load
+  if (!e.target.closest("[data-baanto]")) mountMascots();
+});
+
+mountMascots();
+render();
+
+function toggleTheme() {
+  const r = document.documentElement;
+  r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark';
+}
+</script>
+</body>
+</html>

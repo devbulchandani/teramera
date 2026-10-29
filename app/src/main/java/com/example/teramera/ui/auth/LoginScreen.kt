@@ -2,7 +2,9 @@ package com.example.teramera.ui.auth
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,37 +54,40 @@ fun LoginScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    Column(
+    val cream = MaterialTheme.colorScheme.inverseOnSurface
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 28.dp),
-        verticalArrangement = Arrangement.Center,
+            .background(MaterialTheme.colorScheme.inverseSurface)
+            .systemBarsPadding(),
     ) {
-        Baanto(
-            state = BaantoState.Idle,
-            size = 88.dp,
-            animate = true,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-        )
-        androidx.compose.foundation.layout.Row(
+        Column(
             modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(top = 12.dp),
+                .fillMaxSize()
+                .padding(horizontal = 28.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("tere", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.secondary)
-            Text("mera", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.primary)
-        }
-        Text(
-            "Money between friends, split fairly and settled simply.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .padding(top = 10.dp, bottom = 36.dp)
-                .fillMaxWidth(),
-        )
+            Baanto(
+                state = BaantoState.Idle,
+                size = 112.dp,
+                animate = true,
+            )
+            androidx.compose.foundation.layout.Row(modifier = Modifier.padding(top = 10.dp)) {
+                Text("tere", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.primary)
+                Text("mera", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.secondary)
+            }
+            Text(
+                "Money between friends, split fairly and settled simply.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = cream.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .padding(top = 10.dp, bottom = 30.dp)
+                    .fillMaxWidth(),
+            )
 
-        val context = LocalContext.current
+            val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val addGoogleAccount: () -> Unit = {
             val addAccount = Intent(Settings.ACTION_ADD_ACCOUNT).apply {
@@ -137,10 +146,10 @@ fun LoginScreen(
                 }
             },
             enabled = !state.loading,
-            shape = MaterialTheme.shapes.medium,
+            shape = CircleShape,
             modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(54.dp),
         ) {
             Text(if (state.loading) "Signing in…" else "Continue with Google", style = MaterialTheme.typography.labelLarge)
         }
@@ -148,6 +157,7 @@ fun LoginScreen(
         Spacer(Modifier.height(8.dp))
 
         ErrorBanner(state.error, state.offerAddAccount, addGoogleAccount)
+        }
     }
 }
 

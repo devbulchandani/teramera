@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -30,8 +30,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -39,7 +42,13 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.data.repository.BalanceEntry
+import com.example.teramera.ui.components.Baanto
+import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.components.EmptyState
+import com.example.teramera.ui.components.InkHeader
+import com.example.teramera.ui.components.PowerIcon
+import com.example.teramera.ui.theme.Ink900
+import com.example.teramera.ui.theme.Paper100
 import com.example.teramera.ui.theme.TerameraTheme
 import java.text.NumberFormat
 import java.util.Locale
@@ -135,7 +144,7 @@ fun HomeContent(
 
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 88.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 28.dp),
         ) {
             val entries = when (HomeTab.entries[selectedTab]) {
                 HomeTab.Friends -> state.friends.map { it.copy(subtitle = friendSubtitle(it)) }
@@ -154,22 +163,20 @@ fun HomeContent(
             }
             val owedYou = entries.filter { it.amountMinor > 0 }
             if (owedYou.isNotEmpty()) {
-                item { SectionLabel("Owes you") }
-                items(owedYou, key = { "${it.id}-pos" }) { entry ->
-                    BalanceRow(entry, onClick = {
+                item(key = "sec-pos") {
+                    SectionLabel("Owes you")
+                    BalanceCard(owedYou) { entry ->
                         if (entry.isGroup) onOpenGroup(entry.id)
-                    })
-                    HorizontalHairline()
+                    }
                 }
             }
             val youOwe = entries.filter { it.amountMinor < 0 }
             if (youOwe.isNotEmpty()) {
-                item { SectionLabel("You owe") }
-                items(youOwe, key = { "${it.id}-neg" }) { entry ->
-                    BalanceRow(entry, onClick = {
+                item(key = "sec-neg") {
+                    SectionLabel("You owe")
+                    BalanceCard(youOwe) { entry ->
                         if (entry.isGroup) onOpenGroup(entry.id)
-                    })
-                    HorizontalHairline()
+                    }
                 }
             }
         }
@@ -192,63 +199,81 @@ internal fun TopBar(
     onOpenVersion: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column {
-            Text(
-                text = greetingFor(java.util.Calendar.getInstance()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = state.selfName.ifEmpty { "You" },
-                style = MaterialTheme.typography.titleLarge,
-            )
-        }
-        Box {
-            Box(modifier = Modifier.clickable { menuOpen = true }) {
-                Avatar(initials = initialsOfName(state.selfName.ifEmpty { "You" }), isViolet = false, size = 44.dp)
+    val cream = MaterialTheme.colorScheme.inverseOnSurface
+    InkHeader {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(
+                    text = greetingFor(java.util.Calendar.getInstance()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = cream.copy(alpha = 0.78f),
+                )
+                Text(
+                    text = state.selfName.ifEmpty { "You" },
+                    style = MaterialTheme.typography.titleLarge,
+                    color = cream,
+                )
             }
-            androidx.compose.material3.DropdownMenu(
-                expanded = menuOpen,
-                onDismissRequest = { menuOpen = false },
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Profile & UPI") },
-                    onClick = {
-                        menuOpen = false
-                        onOpenProfile()
-                    },
-                )
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("App version") },
-                    trailingIcon = {
-                        Text(
-                            versionName,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Baanto(state = BaantoState.Idle, size = 40.dp, animate = true)
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .clickable { menuOpen = true }
+                            .semantics {
+                                contentDescription = "Profile and settings"
+                                role = Role.Button
+                            },
+                    ) {
+                        Avatar(initials = initialsOfName(state.selfName.ifEmpty { "You" }), isViolet = false, size = 44.dp)
+                    }
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                    ) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Profile & UPI") },
+                            onClick = {
+                                menuOpen = false
+                                onOpenProfile()
+                            },
                         )
-                    },
-                    onClick = {
-                        menuOpen = false
-                        onOpenVersion()
-                    },
-                )
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Log out", color = MaterialTheme.colorScheme.error) },
-                    leadingIcon = {
-                        Text("⏻", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
-                    },
-                    onClick = {
-                        menuOpen = false
-                        onLogout()
-                    },
-                )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("App version") },
+                            trailingIcon = {
+                                Text(
+                                    versionName,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onOpenVersion()
+                            },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Log out", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                PowerIcon(
+                                    tint = MaterialTheme.colorScheme.error,
+                                    size = 20.dp,
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onLogout()
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -266,45 +291,50 @@ private fun initialsOfName(name: String): String =
 
 @Composable
 private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long, lastSyncAt: Long?) {
-    // Inverted-ink card: dark in light theme, cream in dark theme.
-    val bg = MaterialTheme.colorScheme.onBackground
-    val fg = MaterialTheme.colorScheme.background
+    val ink = MaterialTheme.colorScheme.inverseSurface
+    val cream = MaterialTheme.colorScheme.inverseOnSurface
 
     Column(
         modifier = Modifier
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 20.dp, vertical = 16.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(bg)
+            .clip(MaterialTheme.shapes.large)
+            .background(ink)
             .padding(20.dp),
     ) {
         Text(
             text = if (netMinor >= 0) "You are owed in total" else "You owe in total",
             style = MaterialTheme.typography.bodyMedium,
-            color = fg.copy(alpha = 0.7f),
+            color = cream.copy(alpha = 0.82f),
         )
-        Text(
-            text = if (netMinor >= 0) "₹${formatInr(netMinor)}" else "−₹${formatInr(-netMinor)}",
-            style = MaterialTheme.typography.displayLarge,
-            color = fg,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                "₹",
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(2.dp))
+            Text(
+                text = formatInr(kotlin.math.abs(netMinor)),
+                style = MaterialTheme.typography.displayLarge,
+                color = cream,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 14.dp)) {
             HeroChip(
-                label = "You're owed ₹${formatInr(owedToYouMinor)}",
-                dotColor = MaterialTheme.colorScheme.tertiary,
-                textColor = MaterialTheme.colorScheme.tertiary,
+                label = "Owed ₹${formatInr(owedToYouMinor)}",
+                tint = MaterialTheme.colorScheme.secondary,
             )
             HeroChip(
                 label = "You owe ₹${formatInr(youOweMinor)}",
-                dotColor = MaterialTheme.colorScheme.error,
-                textColor = MaterialTheme.colorScheme.error,
+                tint = MaterialTheme.colorScheme.primary,
             )
         }
         if (lastSyncAt != null) {
             Text(
                 "Updated ${com.example.teramera.core.time.TimeFormat.relative(lastSyncAt)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = fg.copy(alpha = 0.6f),
+                color = cream.copy(alpha = 0.62f),
                 modifier = Modifier.padding(top = 12.dp),
             )
         }
@@ -312,22 +342,14 @@ private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long, la
 }
 
 @Composable
-private fun HeroChip(label: String, dotColor: Color, textColor: Color) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+private fun HeroChip(label: String, tint: Color) {
+    Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(textColor.copy(alpha = 0.18f))
+            .clip(CircleShape)
+            .background(tint.copy(alpha = 0.18f))
             .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
-        Box(
-            Modifier
-                .size(7.dp)
-                .clip(CircleShape)
-                .background(dotColor),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = textColor)
+        Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = tint)
     }
 }
 
@@ -335,9 +357,9 @@ private fun HeroChip(label: String, dotColor: Color, textColor: Color) {
 private fun SegmentedTabs(tabs: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
     Row(
         modifier = Modifier
-            .padding(horizontal = 20.dp, vertical = 20.dp)
+            .padding(horizontal = 20.dp, vertical = 4.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(999.dp))
+            .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -347,19 +369,35 @@ private fun SegmentedTabs(tabs: List<String>, selectedIndex: Int, onSelect: (Int
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(if (selected) MaterialTheme.colorScheme.background else Color.Transparent)
-                    .clickable { onSelect(index) },
+                    .heightIn(min = 44.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                    .selectable(selected = selected, role = Role.Tab) { onSelect(index) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (selected) MaterialTheme.colorScheme.onBackground
+                    color = if (selected) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun BalanceCard(entries: List<BalanceEntry>, onOpen: (BalanceEntry) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 16.dp),
+    ) {
+        entries.forEachIndexed { index, entry ->
+            BalanceRow(entry, onClick = { onOpen(entry) })
+            if (index != entries.lastIndex) HorizontalHairline()
         }
     }
 }
@@ -387,7 +425,7 @@ private fun BalanceRow(entry: BalanceEntry, onClick: () -> Unit = {}) {
         Avatar(initials = entry.initials, isViolet = entry.isViolet, size = 44.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(entry.name, style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp))
+            Text(entry.name, style = MaterialTheme.typography.titleMedium)
             Text(
                 entry.subtitle,
                 style = MaterialTheme.typography.bodyMedium,
@@ -421,17 +459,24 @@ private fun HorizontalHairline() {
 
 @Composable
 internal fun Avatar(initials: String, isViolet: Boolean, size: androidx.compose.ui.unit.Dp) {
-    val first = if (isViolet) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
-    val second = if (isViolet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+    // Peach/Mint alternate; butter appears when the hash asks for a third tone.
+    val tone = when {
+        isViolet -> MaterialTheme.colorScheme.secondary
+        initials.hashCode() % 3 == 0 -> com.example.teramera.ui.theme.Butter
+        else -> MaterialTheme.colorScheme.primary
+    }
     Box(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            // hard 105°-ish split between the two accent hues, both dark enough for white text
-            .background(Brush.linearGradient(0f to first, 0.5f to first, 0.5001f to second, 1f to second)),
+            .background(tone),
         contentAlignment = Alignment.Center,
     ) {
-        Text(initials, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary)
+        Text(
+            initials,
+            style = MaterialTheme.typography.labelMedium,
+            color = Ink900,
+        )
     }
 }
 
@@ -461,7 +506,7 @@ private fun ProfileDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         title = { Text("Profile & UPI") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -470,6 +515,7 @@ private fun ProfileDialog(
                     onValueChange = { name = it },
                     label = { Text("Your name") },
                     singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 androidx.compose.material3.OutlinedTextField(
@@ -486,6 +532,7 @@ private fun ProfileDialog(
                     },
                     singleLine = true,
                     isError = !upiValid,
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -515,7 +562,7 @@ private fun VersionDialog(
     val available = check.available
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         title = { Text("teramera") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

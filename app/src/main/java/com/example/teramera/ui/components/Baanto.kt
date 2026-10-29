@@ -26,14 +26,17 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
+import com.example.teramera.ui.theme.Ink900
 import com.example.teramera.ui.theme.MascotCream
 
 /**
- * Baanto — the teramera mascot. A coin split down the middle: teal for what
- * you paid ("mera"), violet for what you owe ("tere"). Quiet, geometric, and
+ * Baanto — the teramera mascot. A coin split down the middle: peach for what
+ * you owe ("tere"), mint for what you paid ("mera"). Quiet, geometric, and
  * drawn in Compose so it scales without a raster asset.
  *
  * Coordinates live in a 200×200 design space and are scaled to [size].
@@ -52,12 +55,13 @@ fun Baanto(
     withCoin: Boolean = true,
     animate: Boolean = false,
 ) {
-    val teal = MaterialTheme.colorScheme.primary
-    val violet = MaterialTheme.colorScheme.secondary
-    val ink = MaterialTheme.colorScheme.onSurfaceVariant
-    val coinInk = MaterialTheme.colorScheme.onSurface
+    val peach = MaterialTheme.colorScheme.primary
+    val mint = MaterialTheme.colorScheme.secondary
+    // Peach and mint are light in both themes, so features are always ink.
+    val ink = Ink900
+    val coinInk = Ink900
     val cream = MascotCream
-    val ring = MaterialTheme.colorScheme.outlineVariant
+    val ring = MascotCream.copy(alpha = 0.35f)
 
     val body = remember { Path().apply { addOval(Rect(CX - R, CY - R, CX + R, CY + R)) } }
     val paint = remember {
@@ -83,23 +87,27 @@ fun Baanto(
         0f
     }
 
-    Canvas(modifier = modifier.size(size)) {
+    Canvas(
+        modifier = modifier
+            .size(size)
+            .semantics { contentDescription = "Baanto" },
+    ) {
         val factor = this.size.minDimension / 200f
         scale(factor, factor, pivot = Offset.Zero) {
             rotate(sway, Offset(CX, CY)) {
                 clipPath(body) {
-                    drawCircle(teal, R, Offset(CX, CY))
+                    drawCircle(peach, R, Offset(CX, CY))
                     rotate(-13f, Offset(CX, CY)) {
                         clipRect(left = 100f, top = -100f, right = 300f, bottom = 300f) {
-                            drawCircle(violet, R, Offset(CX, CY))
+                            drawCircle(mint, R, Offset(CX, CY))
                         }
                     }
                 }
-                drawCircle(cream.copy(alpha = 0.28f), R, Offset(CX, CY), style = Stroke(2f))
+                drawCircle(ring, R, Offset(CX, CY), style = Stroke(2f))
 
-                drawFace(state, cream, ink)
+                drawFace(state, ink, ink)
 
-                if (withCoin) drawCoin(cream, ring, coinInk, paint)
+                if (withCoin) drawCoin(cream, coinInk, coinInk, paint)
             }
         }
     }

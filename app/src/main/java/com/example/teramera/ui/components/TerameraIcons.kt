@@ -101,3 +101,115 @@ fun SettleIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
         )
     }
 }
+
+@Composable
+fun ArrowBackIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 1.75f * s
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+        drawLine(tint, p(15f, 5f), p(8f, 12f), w, StrokeCap.Round)
+        drawLine(tint, p(8f, 12f), p(15f, 19f), w, StrokeCap.Round)
+    }
+}
+
+@Composable
+fun ChevronRightIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 1.75f * s
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+        drawLine(tint, p(9f, 5f), p(16f, 12f), w, StrokeCap.Round)
+        drawLine(tint, p(16f, 12f), p(9f, 19f), w, StrokeCap.Round)
+    }
+}
+
+@Composable
+fun CloseIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 1.75f * s
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+        drawLine(tint, p(6f, 6f), p(18f, 18f), w, StrokeCap.Round)
+        drawLine(tint, p(18f, 6f), p(6f, 18f), w, StrokeCap.Round)
+    }
+}
+
+@Composable
+fun PlusIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 1.75f * s
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+        drawLine(tint, p(12f, 5f), p(12f, 19f), w, StrokeCap.Round)
+        drawLine(tint, p(5f, 12f), p(19f, 12f), w, StrokeCap.Round)
+    }
+}
+
+@Composable
+fun CheckIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 2f * s
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+        drawLine(tint, p(5f, 12.5f), p(9.5f, 17f), w, StrokeCap.Round)
+        drawLine(tint, p(9.5f, 17f), p(19f, 7f), w, StrokeCap.Round)
+    }
+}
+
+@Composable
+fun ShareIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 1.75f * s
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+        drawLine(tint, p(12f, 16f), p(12f, 4f), w, StrokeCap.Round)
+        drawLine(tint, p(8f, 8f), p(12f, 4f), w, StrokeCap.Round)
+        drawLine(tint, p(12f, 4f), p(16f, 8f), w, StrokeCap.Round)
+        val box = Path().apply {
+            moveTo(5f * s, 14f * s)
+            lineTo(5f * s, 20f * s)
+            lineTo(19f * s, 20f * s)
+            lineTo(19f * s, 14f * s)
+        }
+        drawPath(box, tint, style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+}
+
+@Composable
+fun BackspaceIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 1.75f * s
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+        val outline = Path().apply {
+            moveTo(20f * s, 6f * s)
+            lineTo(9f * s, 6f * s)
+            lineTo(4f * s, 12f * s)
+            lineTo(9f * s, 18f * s)
+            lineTo(20f * s, 18f * s)
+            close()
+        }
+        drawPath(outline, tint, style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawLine(tint, p(17f, 9f), p(13f, 15f), w, StrokeCap.Round)
+        drawLine(tint, p(13f, 9f), p(17f, 15f), w, StrokeCap.Round)
+    }
+}
+
+@Composable
+fun PowerIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 1.75f * s
+        drawLine(tint, Offset(12f * s, 3f * s), Offset(12f * s, 11f * s), w, StrokeCap.Round)
+        drawArc(
+            color = tint,
+            startAngle = -50f,
+            sweepAngle = 280f,
+            useCenter = false,
+            topLeft = Offset(4f * s, 5f * s),
+            size = Size(16f * s, 16f * s),
+            style = Stroke(w, cap = StrokeCap.Round),
+        )
+    }
+}

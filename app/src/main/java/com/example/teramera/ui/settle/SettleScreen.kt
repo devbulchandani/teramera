@@ -7,16 +7,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -33,15 +34,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.teramera.core.time.TimeFormat
 import com.example.teramera.data.local.PaymentMethod
 import com.example.teramera.data.repository.BalanceEntry
+import com.example.teramera.ui.components.Baanto
+import com.example.teramera.ui.components.BaantoState
+import com.example.teramera.ui.components.CheckIcon
+import com.example.teramera.ui.components.EmptyState
+import com.example.teramera.ui.components.InkHeader
 import com.example.teramera.ui.home.Avatar
 import com.example.teramera.ui.home.formatInr
+import com.example.teramera.ui.theme.Ink900
 
 @Composable
 fun SettleScreen(
@@ -99,17 +111,17 @@ fun SettleScreen(
     pendingUpiConfirm?.let { confirmDraft ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { pendingUpiConfirm = null },
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.large,
             icon = {
                 // Small visual hint that the money has already moved in the UPI app.
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(MaterialTheme.colorScheme.tertiaryContainer),
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("✓", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.tertiary)
+                    CheckIcon(tint = MaterialTheme.colorScheme.tertiary, size = 22.dp)
                 }
             },
             title = { Text("Did the payment go through?") },
@@ -149,36 +161,52 @@ fun SettleScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            "Settle up",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-        )
+        val youOweTotal = state.balances.filter { it.amountMinor < 0 }.sumOf { -it.amountMinor }
+        InkHeader {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "Settle up",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Baanto(state = BaantoState.Pleased, size = 40.dp, animate = true)
+            }
+            Text(
+                "₹${formatInr(youOweTotal)} across ${state.balances.count { it.amountMinor < 0 }} people",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.78f),
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
 
-        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)) {
+        LazyColumn(
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 20.dp, end = 20.dp, top = 18.dp, bottom = 28.dp,
+            ),
+        ) {
             val owedYou = state.balances.filter { it.amountMinor > 0 }
             if (owedYou.isNotEmpty()) {
-                item { SectionLabel("Owes you") }
-                items(owedYou, key = { "${it.id}-pos" }) { entry ->
-                    SettleRow(entry, onClick = { viewModel.start(entry) })
-                    Hairline()
+                item {
+                    SectionLabel("Owes you")
+                    BalanceCard(owedYou) { viewModel.start(it) }
                 }
             }
             val youOwe = state.balances.filter { it.amountMinor < 0 }
             if (youOwe.isNotEmpty()) {
-                item { SectionLabel("You owe") }
-                items(youOwe, key = { "${it.id}-neg" }) { entry ->
-                    SettleRow(entry, onClick = { viewModel.start(entry) })
-                    Hairline()
+                item {
+                    SectionLabel("You owe")
+                    BalanceCard(youOwe) { viewModel.start(it) }
                 }
             }
             if (state.balances.isEmpty()) {
                 item {
-                    Text(
-                        "Everyone's square. Nothing to settle.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(20.dp),
+                    EmptyState(
+                        title = "Everyone's square",
+                        message = "Nothing to settle right now. Add an expense to start something.",
                     )
                 }
             }
@@ -221,7 +249,7 @@ private fun SettleRow(entry: BalanceEntry, onClick: () -> Unit) {
         Avatar(initials = entry.initials, isViolet = entry.isViolet, size = 44.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(entry.name, style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp))
+            Text(entry.name, style = MaterialTheme.typography.titleMedium)
             Text(
                 text = if (positive) "owes you" else "you owe",
                 style = MaterialTheme.typography.bodyMedium,
@@ -233,6 +261,22 @@ private fun SettleRow(entry: BalanceEntry, onClick: () -> Unit) {
             style = MaterialTheme.typography.titleMedium,
             color = if (positive) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
         )
+    }
+}
+
+@Composable
+private fun BalanceCard(entries: List<BalanceEntry>, onOpen: (BalanceEntry) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 16.dp),
+    ) {
+        entries.forEachIndexed { index, entry ->
+            SettleRow(entry, onClick = { onOpen(entry) })
+            if (index != entries.lastIndex) Hairline()
+        }
     }
 }
 
@@ -253,7 +297,11 @@ private fun SettleSheet(
     onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+        containerColor = MaterialTheme.colorScheme.background,
+    ) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 20.dp)) {
             if (!saved) {
                 SheetHeader(name = draft.person.name)
@@ -301,7 +349,7 @@ private fun SettleSheet(
                 Button(
                     onClick = onSave,
                     enabled = !saving && draft.amountMinor > 0,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = CircleShape,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 16.dp)
@@ -334,59 +382,75 @@ private fun QuickChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val bg =
         if (selected) MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surfaceVariant
+    val border =
+        if (selected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .heightIn(min = 44.dp)
+            .clip(CircleShape)
             .background(bg)
+            .border(1.5.dp, border, CircleShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
 @Composable
 private fun KeypadRow(onKey: (Char) -> Unit, onBackspace: () -> Unit) {
     val keys = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"))
-    Column(modifier = Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         keys.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { key ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { onKey(key.first()) },
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    KeypadKey(onClick = { onKey(key.first()) }, contentDescription = key) {
                         Text(key, style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Spacer(Modifier.weight(1f))
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable { onKey('0') },
-                contentAlignment = Alignment.Center,
-            ) { Text("0", style = MaterialTheme.typography.titleMedium) }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable(onClick = onBackspace),
-                contentAlignment = Alignment.Center,
-            ) { Text("⌫", style = MaterialTheme.typography.titleMedium) }
+            KeypadKey(onClick = { onKey('0') }, contentDescription = "0") {
+                Text("0", style = MaterialTheme.typography.titleMedium)
+            }
+            KeypadKey(onClick = onBackspace, contentDescription = "Backspace") {
+                com.example.teramera.ui.components.BackspaceIcon(
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    size = 22.dp,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun RowScope.KeypadKey(
+    onClick: () -> Unit,
+    contentDescription: String,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .height(58.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 
@@ -403,14 +467,14 @@ private fun MethodRow(method: PaymentMethod, selected: Boolean, onSelect: (Payme
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(MaterialTheme.shapes.medium)
             .background(bg)
-            .border(1.5.dp, border, RoundedCornerShape(16.dp))
+            .border(1.5.dp, border, MaterialTheme.shapes.medium)
             .clickable { onSelect(method) }
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Text(method.label(), style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp))
+            Text(method.label(), style = MaterialTheme.typography.titleMedium)
             Text(
                 when (method) {
                     PaymentMethod.UPI -> "GPay, PhonePe, Paytm or any UPI app"
@@ -438,42 +502,58 @@ private fun PaymentMethod.label() = when (this) {
 
 @Composable
 private fun DoneStage(draft: SettleDraft, onDone: () -> Unit) {
+    val recordedAt = remember(draft) { System.currentTimeMillis() }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 32.dp),
+            .padding(vertical = 28.dp),
     ) {
+        Baanto(state = BaantoState.Pleased, size = 72.dp, withCoin = false)
+        Spacer(Modifier.height(8.dp))
         Box(
             modifier = Modifier
-                .size(92.dp)
+                .size(84.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.tertiaryContainer),
+                .background(MaterialTheme.colorScheme.secondaryContainer),
             contentAlignment = Alignment.Center,
         ) {
-            Text("✓", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.tertiary)
+            CheckIcon(tint = MaterialTheme.colorScheme.tertiary, size = 38.dp)
         }
         Spacer(Modifier.height(16.dp))
         Text(
             "Settled with ${draft.person.name}",
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.displayMedium,
+            textAlign = TextAlign.Center,
         )
         Text(
-            "Recorded ₹${formatInr(draft.amountMinor)} via ${draft.method.name.lowercase().replaceFirstChar { it.uppercase() }}.",
-            style = MaterialTheme.typography.bodyLarge,
+            "₹${formatInr(draft.amountMinor)}",
+            style = MaterialTheme.typography.displayLarge,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Text(
+            "Recorded ${TimeFormat.dayTime(recordedAt)} via ${draft.method.name.lowercase().replaceFirstChar { it.uppercase() }}.",
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Text(
+            "${draft.person.name} will see this in their activity, and both balances update everywhere.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 10.dp),
         )
         Button(
             onClick = onDone,
-            shape = RoundedCornerShape(16.dp),
+            shape = CircleShape,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 24.dp)
-                .height(56.dp),
+                .padding(top = 20.dp)
+                .height(54.dp),
         ) {
-            Text("Done", style = MaterialTheme.typography.labelLarge)
+            Text("Back to settle", style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -493,7 +573,6 @@ private fun Hairline() {
     HorizontalDivider(
         color = MaterialTheme.colorScheme.outlineVariant,
         thickness = 1.dp,
-        modifier = Modifier.padding(horizontal = 20.dp),
     )
 }
 

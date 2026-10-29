@@ -6,43 +6,64 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.teramera.core.time.TimeFormat
 import com.example.teramera.data.repository.SplitType
+import com.example.teramera.ui.components.Baanto
+import com.example.teramera.ui.components.BaantoState
+import com.example.teramera.ui.components.BackspaceIcon
+import com.example.teramera.ui.components.CloseIcon
+import com.example.teramera.ui.components.ArrowBackIcon
 import com.example.teramera.ui.home.Avatar
 import com.example.teramera.ui.home.formatInr
+import com.example.teramera.ui.theme.Ink900
+import com.example.teramera.ui.theme.Paper100
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +74,7 @@ fun AddExpenseSheet(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val draft = state.draft
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Fresh draft every time the sheet opens; then lock the group (if any) and load
     // its members. Re-fires when server mode flips on — the first pass can land
@@ -62,161 +84,239 @@ fun AddExpenseSheet(
         if (fixedGroupId != null) viewModel.setGroup(fixedGroupId) else viewModel.ensureServerDefaults()
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.navigationBarsPadding()) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+        containerColor = MaterialTheme.colorScheme.background,
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .navigationBarsPadding()
+                .imePadding(),
+        ) {
             SheetHeader(
                 step = draft.step,
+                draft = draft,
+                state = state,
+                fixedGroupId = fixedGroupId,
                 onClose = onDismiss,
                 onBack = if (draft.step > 1) viewModel::previousStep else null,
+                onSelectGroup = viewModel::setGroup,
             )
-            if (fixedGroupId == null) {
-                GroupSelector(state = state, onSelect = viewModel::setGroup)
-            } else {
-                val groupName = state.groups.firstOrNull { it.id == fixedGroupId }?.name
-                if (groupName != null) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    ) {
-                        SelectorChip(label = groupName, selected = true, onClick = {})
-                    }
-                }
-            }
 
             when (draft.step) {
                 1 -> AmountStep(state, viewModel)
                 2 -> DetailsStep(state, viewModel)
-                else ->
-                    if (state.serverMode) ServerParticipantsStep(state, viewModel, onSaved = onDismiss)
-                    else ParticipantsStep(state, viewModel, onSaved = onDismiss)
+                else -> ReviewStep(state, viewModel, onSaved = onDismiss)
             }
         }
     }
 }
 
+// ---------- ink header ----------
+
 @Composable
-private fun SheetHeader(step: Int, onClose: () -> Unit, onBack: (() -> Unit)?) {
-    Row(
+private fun SheetHeader(
+    step: Int,
+    draft: AddDraft,
+    state: AddExpenseUiState,
+    fixedGroupId: String?,
+    onClose: () -> Unit,
+    onBack: (() -> Unit)?,
+    onSelectGroup: (String?) -> Unit,
+) {
+    val cream = MaterialTheme.colorScheme.inverseOnSurface
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))
+            .background(MaterialTheme.colorScheme.inverseSurface)
+            .statusBarsPadding()
+            .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = if (step == 1) 18.dp else 20.dp),
     ) {
-        HeaderButton(
-            label = if (onBack != null) "←" else "",
-            onClick = { onBack?.invoke() },
-            enabled = onBack != null,
-        )
-        Text(
-            "Add expense",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.weight(1f),
-            textAlign = TextAlign.Center,
-        )
-        HeaderButton(label = "✕", onClick = onClose, enabled = true)
-    }
-}
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            HeaderButton(
+                enabled = onBack != null,
+                contentDescription = "Back",
+                onClick = { onBack?.invoke() },
+            ) {
+                ArrowBackIcon(tint = Paper100, size = 20.dp)
+            }
+            Text(
+                "Add expense",
+                style = MaterialTheme.typography.titleMedium,
+                color = cream,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
+            Baanto(state = BaantoState.Idle, size = 36.dp)
+            Spacer(Modifier.width(8.dp))
+            HeaderButton(
+                enabled = true,
+                contentDescription = "Close",
+                onClick = onClose,
+            ) {
+                CloseIcon(tint = Paper100, size = 20.dp)
+            }
+        }
 
-@Composable
-private fun HeaderButton(label: String, onClick: () -> Unit, enabled: Boolean) {
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .alpha(if (enabled) 1f else 0f)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
-    }
-}
+        ProgressPills(step = step, modifier = Modifier.padding(top = 12.dp, start = 4.dp))
 
-@Composable
-private fun GroupSelector(state: AddExpenseUiState, onSelect: (String?) -> Unit) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
-        modifier = Modifier
-            .padding(vertical = 12.dp)
-            .fillMaxWidth(),
-    ) {
-        item { SelectorChip(label = "No group", selected = state.draft.groupId == null) { onSelect(null) } }
-        items(state.groups, key = { it.id }) { group ->
-            SelectorChip(
-                label = group.name,
-                selected = state.draft.groupId == group.id,
-            ) { onSelect(group.id) }
+        if (step == 1) {
+            Spacer(Modifier.height(14.dp))
+            GroupPicker(
+                state = state,
+                fixedGroupId = fixedGroupId,
+                onSelectGroup = onSelectGroup,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "₹",
+                    style = MaterialTheme.typography.displayLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(2.dp))
+                Text(
+                    draft.amountText.ifEmpty { "0" },
+                    style = MaterialTheme.typography.displayLarge.copy(fontSize = 56.sp),
+                    color = cream,
+                )
+            }
+            val people = if (state.serverMode) state.draft.includedServer.size else state.draft.included.size
+            Text(
+                "Equal split by default · ${people.coerceAtLeast(2)} people",
+                style = MaterialTheme.typography.bodySmall,
+                color = cream.copy(alpha = 0.72f),
+            )
         }
     }
 }
 
 @Composable
-private fun SelectorChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val bg =
-        if (selected) MaterialTheme.colorScheme.secondaryContainer
-        else MaterialTheme.colorScheme.surfaceVariant
-    val border =
-        if (selected) MaterialTheme.colorScheme.secondary
-        else Color.Transparent
+private fun HeaderButton(
+    enabled: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(bg)
-            .border(1.5.dp, border, RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(Paper100.copy(alpha = if (enabled) 0.12f else 0f))
+            .then(
+                if (enabled) Modifier.clickable(onClick = onClick) else Modifier
+            )
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium)
+        if (enabled) content()
+    }
+}
+
+@Composable
+private fun ProgressPills(step: Int, modifier: Modifier = Modifier) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(3) { index ->
+            val active = index + 1 == step
+            Box(
+                Modifier
+                    .width(if (active) 38.dp else 26.dp)
+                    .height(5.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (active) MaterialTheme.colorScheme.primary
+                        else Paper100.copy(alpha = 0.18f)
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun GroupPicker(
+    state: AddExpenseUiState,
+    fixedGroupId: String?,
+    onSelectGroup: (String?) -> Unit,
+) {
+    val selectedId = state.draft.groupId
+    if (fixedGroupId != null) {
+        val name = state.groups.firstOrNull { it.id == fixedGroupId }?.name
+        if (name != null) {
+            InkChip(label = name, selected = true, onClick = {})
+        }
+        return
+    }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            InkChip(
+                label = "No group",
+                selected = selectedId == null,
+                onClick = { onSelectGroup(null) },
+            )
+        }
+        items(state.groups, key = { it.id }) { group ->
+            InkChip(
+                label = group.name,
+                selected = selectedId == group.id,
+                onClick = { onSelectGroup(group.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun InkChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val cream = MaterialTheme.colorScheme.inverseOnSurface
+    Box(
+        modifier = Modifier
+            .heightIn(min = 44.dp)
+            .clip(CircleShape)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary
+                else Paper100.copy(alpha = 0.12f)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else cream,
+        )
     }
 }
 
 // ---------- Step 1: amount keypad ----------
 
 @Composable
-private fun AmountStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel) {
-    val amountText = state.draft.amountText.ifEmpty { "0" }
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-    ) {
-        Spacer(Modifier.height(16.dp))
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(horizontal = 14.dp, vertical = 7.dp),
-        ) {
-            Text("₹ INR", style = MaterialTheme.typography.labelMedium)
-        }
+private fun ColumnScope.AmountStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel) {
+    Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        Spacer(Modifier.weight(1f))
+        Keypad(
+            onKey = viewModel::onKey,
+            onBackspace = viewModel::onBackspace,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
         Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text("₹", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(6.dp))
-            Text(amountText, style = MaterialTheme.typography.displayLarge)
-        }
-        Text(
-            text = "Split equally by default — change next",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+        PrimaryButton(
+            label = "Continue",
+            enabled = state.draft.amountMinor > 0,
+            onClick = viewModel::nextStep,
         )
     }
-
-    Keypad(
-        onKey = viewModel::onKey,
-        onBackspace = viewModel::onBackspace,
-        modifier = Modifier.padding(horizontal = 12.dp),
-    )
-
-    PrimaryButton(
-        label = "Next",
-        enabled = state.draft.amountMinor > 0,
-        onClick = viewModel::nextStep,
-    )
 }
 
 @Composable
@@ -227,19 +327,19 @@ private fun Keypad(onKey: (Char) -> Unit, onBackspace: () -> Unit, modifier: Mod
         listOf("7", "8", "9"),
         listOf(".", "0", "⌫"),
     )
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         keys.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { key ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(64.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { if (key == "⌫") onBackspace() else onKey(key.first()) },
-                        contentAlignment = Alignment.Center,
+                    KeypadKey(
+                        onClick = { if (key == "⌫") onBackspace() else onKey(key.first()) },
+                        contentDescription = if (key == "⌫") "Backspace" else key,
                     ) {
-                        Text(key, style = MaterialTheme.typography.titleMedium)
+                        if (key == "⌫") {
+                            BackspaceIcon(tint = MaterialTheme.colorScheme.onSurface, size = 24.dp)
+                        } else {
+                            Text(key, style = MaterialTheme.typography.displayMedium)
+                        }
                     }
                 }
             }
@@ -247,71 +347,114 @@ private fun Keypad(onKey: (Char) -> Unit, onBackspace: () -> Unit, modifier: Mod
     }
 }
 
+@Composable
+private fun RowScope.KeypadKey(
+    onClick: () -> Unit,
+    contentDescription: String,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .height(58.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
 // ---------- Step 2: details & split type ----------
 
 @Composable
-private fun DetailsStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-    ) {
-        item {
-            OutlinedTextField(
-                value = state.draft.title,
-                onValueChange = viewModel::setTitle,
-                placeholder = { Text("What was it for?") },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            if (!state.serverMode) {
-                Spacer(Modifier.height(12.dp))
-                PaidBySection(state = state, viewModel = viewModel)
-            }
-
-            Spacer(Modifier.height(20.dp))
-            if (state.serverMode) {
-                ServerSplitSection(state = state, viewModel = viewModel)
-            } else {
-                SectionLabel("Split by")
-                SplitTypeSelector(selected = state.draft.splitType, onSelect = viewModel::setSplitType)
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-
-        if (!state.serverMode && state.draft.splitType != SplitType.EQUAL) {
-            items(viewModel.participants(state), key = { "$it-edit" }) { userId ->
-                RawValueRow(state = state, userId = userId, type = state.draft.splitType, onValue = viewModel::setRawValue)
-            }
-        }
-
-        item { SectionLabelPreview(state, viewModel) }
-
-        val shares = if (state.serverMode) null else viewModel.previewShares(state)
-        if (shares != null) {
-            items(shares, key = { "${it.first}-share" }) { (userId, minor) ->
-                ShareRow(state = state, userId = userId, amountMinor = minor)
-                HorizontalHairline()
-            }
-        } else if (!state.serverMode) {
+private fun ColumnScope.DetailsStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel) {
+    Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
+        ) {
             item {
-                Text(
-                    viewModel.validationError(state) ?: "Enter per-person values above",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(vertical = 12.dp),
+                OutlinedTextField(
+                    value = state.draft.title,
+                    onValueChange = viewModel::setTitle,
+                    placeholder = { Text("What was it for?") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
                 )
+
+                if (!state.serverMode) {
+                    Spacer(Modifier.height(6.dp))
+                    PaidBySection(state = state, viewModel = viewModel)
+                }
+
+                Spacer(Modifier.height(10.dp))
+                if (state.serverMode) {
+                    ServerSplitSection(state = state, viewModel = viewModel)
+                } else {
+                    SectionLabel("How to split?")
+                    SplitTypeSelector(selected = state.draft.splitType, onSelect = viewModel::setSplitType)
+                }
+
+                if (!state.serverMode && state.draft.splitType != SplitType.EQUAL) {
+                    Spacer(Modifier.height(8.dp))
+                    viewModel.participants(state).forEach { userId ->
+                        RawValueRow(
+                            state = state,
+                            userId = userId,
+                            type = state.draft.splitType,
+                            onValue = viewModel::setRawValue,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                val shares = if (state.serverMode) viewModel.serverShares(state) else viewModel.previewShares(state)
+                SectionLabel("Included")
+                if (shares != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.large)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(horizontal = 16.dp),
+                    ) {
+                        shares.forEachIndexed { index, (userId, minor) ->
+                            ShareRow(state = state, userId = userId, amountMinor = minor, isPayer = userId in state.payerIds)
+                            if (index != shares.lastIndex) HorizontalHairline()
+                        }
+                    }
+                } else {
+                    Text(
+                        (if (state.serverMode) viewModel.serverValidationError(state) else viewModel.validationError(state))
+                            ?: "Enter per-person values above",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
             }
         }
+        PrimaryButton(
+            label = "Review split",
+            enabled = state.draft.title.isNotBlank() && state.draft.amountMinor > 0 &&
+                (if (state.serverMode) serverSharesValid(state, viewModel) else sharesValid(state, viewModel)),
+            onClick = viewModel::nextStep,
+        )
     }
-    PrimaryButton(
-        label = "Next",
-        enabled = state.draft.title.isNotBlank() && state.draft.amountMinor > 0 &&
-            (if (state.serverMode) serverSharesValid(state, viewModel) else sharesValid(state, viewModel)),
-        onClick = viewModel::nextStep,
-    )
 }
 
 /**
@@ -327,18 +470,14 @@ private fun PaidBySection(state: AddExpenseUiState, viewModel: AddExpenseViewMod
         viewModel.participantPool(state).map { MemberRow(it, nameOf(state, it)) }
     }
     val selected = state.payerIds
-    SectionLabel("Paid by · ${selected.size} ${if (selected.size == 1) "person" else "people"}")
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        people.chunked(3).forEach { rowPeople ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                rowPeople.forEach { person ->
-                    MemberChip(
-                        label = person.label,
-                        selected = person.id in selected,
-                        onClick = { viewModel.togglePayer(person.id) },
-                    )
-                }
-            }
+    SectionLabel("Who paid?")
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        items(people, key = { it.id }) { person ->
+            PayerAvatar(
+                label = person.label,
+                selected = person.id in selected,
+                onClick = { viewModel.togglePayer(person.id) },
+            )
         }
     }
 
@@ -350,7 +489,7 @@ private fun PaidBySection(state: AddExpenseUiState, viewModel: AddExpenseViewMod
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(MaterialTheme.shapes.small)
                     .background(MaterialTheme.colorScheme.surface)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
@@ -365,7 +504,7 @@ private fun PaidBySection(state: AddExpenseUiState, viewModel: AddExpenseViewMod
                         viewModel.setPayerAmount(uid, (text.filter { it.isDigit() }.toLongOrNull() ?: 0L) * 100)
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = MaterialTheme.shapes.small,
                     modifier = Modifier.width(120.dp),
                 )
             }
@@ -385,55 +524,132 @@ private fun PaidBySection(state: AddExpenseUiState, viewModel: AddExpenseViewMod
 private data class MemberRow(val id: String, val label: String)
 
 @Composable
-private fun SectionLabelPreview(state: AddExpenseUiState, viewModel: AddExpenseViewModel) {
-    val people = if (state.serverMode) state.draft.includedServer.size else viewModel.participants(state).size
-    Text(
-        "₹${formatInr(state.draft.amountMinor)} total · $people ${if (people == 1) "person" else "people"}",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(vertical = 8.dp),
-    )
+private fun PayerAvatar(label: String, selected: Boolean, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .clip(CircleShape)
+                .background(
+                    if (selected) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceVariant
+                )
+                .then(
+                    if (selected) {
+                        Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                    } else Modifier
+                )
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                initialsOf(label),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+            maxLines = 1,
+        )
+    }
 }
 
 @Composable
 private fun SplitTypeSelector(selected: SplitType, onSelect: (SplitType) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-        listOf(SplitType.EQUAL, SplitType.EXACT, SplitType.PERCENT, SplitType.SHARES).forEach { type ->
-            val isSelected = type == selected
-            val bg =
-                if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant
-            val borderColor =
-                if (isSelected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.outlineVariant
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(64.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(bg)
-                    .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
-                    .clickable { onSelect(type) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    when (type) {
-                        SplitType.EQUAL -> "Equal"
-                        SplitType.EXACT -> "Exact"
-                        SplitType.PERCENT -> "%"
-                        SplitType.SHARES -> "Shares"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+    val types = listOf(SplitType.EQUAL, SplitType.EXACT, SplitType.PERCENT, SplitType.SHARES)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        types.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { type ->
+                    SplitTile(
+                        type = type,
+                        selected = type == selected,
+                        onClick = { onSelect(type) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ShareRow(state: AddExpenseUiState, userId: String, amountMinor: Long) {
+private fun SplitTile(
+    type: SplitType,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.medium)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+            .then(
+                if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium)
+                else Modifier
+            )
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .padding(14.dp),
+    ) {
+        SplitGlyph(type = type, selected = selected)
+        Text(
+            when (type) {
+                SplitType.EQUAL -> "Equal"
+                SplitType.EXACT -> "Exact"
+                SplitType.PERCENT -> "Percent"
+                SplitType.SHARES -> "Shares"
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Text(
+            when (type) {
+                SplitType.EQUAL -> "Everyone pays the same"
+                SplitType.EXACT -> "Set each amount"
+                SplitType.PERCENT -> "Split by percentage"
+                SplitType.SHARES -> "Weighted portions"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun SplitGlyph(type: SplitType, selected: Boolean) {
+    val widths = when (type) {
+        SplitType.EQUAL -> listOf(6f, 6f, 6f, 6f)
+        SplitType.EXACT -> listOf(14f, 8f, 18f)
+        SplitType.PERCENT -> listOf(16f, 10f, 6f, 12f)
+        SplitType.SHARES -> listOf(6f, 12f, 18f, 9f)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        widths.forEach { width ->
+            Box(
+                Modifier
+                    .width(width.dp)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ShareRow(state: AddExpenseUiState, userId: String, amountMinor: Long, isPayer: Boolean) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -443,14 +659,20 @@ private fun ShareRow(state: AddExpenseUiState, userId: String, amountMinor: Long
         Avatar(
             initials = initialsOf(nameOf(state, userId)),
             isViolet = userId.hashCode() % 2 == 0,
-            size = 32.dp,
+            size = 40.dp,
         )
         Spacer(Modifier.width(12.dp))
-        Text(
-            nameOf(state, userId),
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
-            modifier = Modifier.weight(1f),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                nameOf(state, userId),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                if (isPayer) "paid" else "included",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Text("₹${formatInr(amountMinor)}", style = MaterialTheme.typography.titleMedium)
     }
 }
@@ -477,7 +699,7 @@ private fun RawValueRow(state: AddExpenseUiState, userId: String, type: SplitTyp
             size = 32.dp,
         )
         Spacer(Modifier.width(12.dp))
-        Text(nameOf(state, userId), style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp), modifier = Modifier.weight(1f))
+        Text(nameOf(state, userId), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
         Text(prefix, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(8.dp))
         OutlinedTextField(
@@ -487,135 +709,119 @@ private fun RawValueRow(state: AddExpenseUiState, userId: String, type: SplitTyp
                 onValue(userId, if (type == SplitType.EXACT) parsed * 100 else parsed)
             },
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = MaterialTheme.shapes.small,
             modifier = Modifier.width(120.dp),
         )
     }
 }
 
-// ---------- Step 3: participants ----------
+// ---------- Step 3: review ----------
 
 @Composable
-private fun ParticipantsStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel, onSaved: () -> Unit) {
-    if (state.serverMode) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-        ) {
-            Text(
-                "Everyone in ${state.groups.firstOrNull { it.id == state.draft.groupId }?.name ?: "the group"} pays equally.",
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Text(
-                "₹${formatInr(state.draft.amountMinor)} · saved to your teramera account",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp),
-            )
+private fun ColumnScope.ReviewStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel, onSaved: () -> Unit) {
+    val now = remember { System.currentTimeMillis() }
+    val shares = if (state.serverMode) viewModel.serverShares(state) else viewModel.previewShares(state)
+    val total = state.draft.amountMinor
+    val payerText = when {
+        state.draft.payers.isEmpty() -> "You"
+        state.draft.payers.size == 1 -> nameOf(state, state.draft.payers.keys.first())
+        else -> state.draft.payers.entries.joinToString(" + ") { (uid, minor) ->
+            "${nameOf(state, uid)} ₹${formatInr(minor)}"
         }
+    }
+    val groupName = state.groups.firstOrNull { it.id == state.draft.groupId }?.name
+
+    Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
+        ) {
+            item {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(18.dp),
+                ) {
+                    Baanto(state = BaantoState.Pleased, size = 64.dp, withCoin = false)
+                    Spacer(Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            "Splitting ${groupName ?: "no group"} · ${splitLabel(state.draft.splitType)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                "₹",
+                                style = MaterialTheme.typography.displayMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                formatInr(total),
+                                style = MaterialTheme.typography.displayLarge,
+                            )
+                        }
+                        Text(
+                            "Paid by $payerText",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                SectionLabel("Who owes what")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 16.dp),
+                ) {
+                    shares.orEmpty().forEachIndexed { index, (userId, minor) ->
+                        ShareRow(
+                            state = state,
+                            userId = userId,
+                            amountMinor = minor,
+                            isPayer = userId in state.payerIds,
+                        )
+                        if (index != shares.orEmpty().lastIndex) HorizontalHairline()
+                    }
+                }
+
+                SectionLabel("When")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(18.dp),
+                ) {
+                    Text(
+                        TimeFormat.dayTime(now),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+
+                state.error?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+            }
+        }
+
         PrimaryButton(
-            label = "Save expense · ₹${formatInr(state.draft.amountMinor)}",
-            enabled = !state.saving && state.draft.title.isNotBlank() && state.draft.amountMinor > 0,
+            label = if (state.saving) "Saving…" else "Split ₹${formatInr(total)}",
+            enabled = !state.saving && state.draft.title.isNotBlank() && total > 0 &&
+                (if (state.serverMode) serverSharesValid(state, viewModel) else sharesValid(state, viewModel)),
             onClick = { viewModel.save(onDone = onSaved) },
         )
-        state.error?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 20.dp),
-            )
-        }
-        return
-    }
-
-    val pool = viewModel.participantPool(state)
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-    ) {
-        item { SectionLabel("Who's in") }
-        items(pool, key = { it }) { userId ->
-            ParticipantToggle(
-                state = state,
-                userId = userId,
-                included = userId in state.draft.included,
-                onToggle = { viewModel.toggleParticipant(userId) },
-            )
-            HorizontalHairline()
-        }
-        item {
-            val shares = viewModel.previewShares(state)
-            Text(
-                text = shares?.joinToString(" · ") { (u, m) -> "${nameOf(state, u)} ₹${formatInr(m)}" }
-                    ?: "Pick at least two people",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-        }
-    }
-    PrimaryButton(
-        label = "Save expense · ₹${formatInr(state.draft.amountMinor)}",
-        enabled = !state.saving && sharesValid(state, viewModel),
-        onClick = { viewModel.save(onDone = onSaved) },
-    )
-    state.error?.let {
-        Text(
-            it,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-    }
-}
-
-@Composable
-private fun ParticipantToggle(state: AddExpenseUiState, userId: String, included: Boolean, onToggle: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .clickable(onClick = onToggle),
-    ) {
-        Column(Modifier.alpha(if (included) 1f else 0.42f)) {
-            Avatar(initials = initialsOf(nameOf(state, userId)), isViolet = userId.hashCode() % 2 == 0, size = 44.dp)
-        }
-        Spacer(Modifier.width(12.dp))
-        Text(
-            nameOf(state, userId),
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
-            modifier = Modifier
-                .weight(1f)
-                .alpha(if (included) 1f else 0.42f),
-        )
-        TickMark(included = included)
-    }
-}
-
-@Composable
-private fun TickMark(included: Boolean) {
-    val bg =
-        if (included) MaterialTheme.colorScheme.primary
-        else Color.Transparent
-    val borderColor =
-        if (included) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.outline
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(bg)
-            .border(2.dp, borderColor, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (included) {
-            Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelLarge)
-        }
     }
 }
 
@@ -624,22 +830,22 @@ private fun TickMark(included: Boolean) {
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text = text.uppercase(),
+        text = text,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 8.dp),
+        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
     )
 }
 
 @Composable
 private fun PrimaryButton(label: String, enabled: Boolean, onClick: () -> Unit) {
-    Button(
+    androidx.compose.material3.Button(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(16.dp),
+        shape = CircleShape,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = 18.dp, vertical = 16.dp)
             .height(56.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelLarge)
@@ -699,9 +905,9 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
 
     PaidBySection(state = state, viewModel = viewModel)
 
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(8.dp))
     SectionLabel("Split between · ${state.draft.includedServer.size} people")
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         members.chunked(3).forEach { rowMembers ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 rowMembers.forEach { member ->
@@ -725,7 +931,7 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
                 onValueChange = viewModel::onFriendQueryChange,
                 placeholder = { Text("Add a friend's email") },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = MaterialTheme.shapes.small,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
                 ),
@@ -748,8 +954,8 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
         }
     }
 
-    Spacer(Modifier.height(16.dp))
-    SectionLabel("Split by")
+    Spacer(Modifier.height(8.dp))
+    SectionLabel("How to split?")
     SplitTypeSelector(selected = state.draft.splitType, onSelect = viewModel::setSplitType)
 
     if (state.draft.splitType != SplitType.EQUAL) {
@@ -763,96 +969,28 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
             )
         }
     }
-
-    val shares = viewModel.serverShares(state)
-    if (shares != null) {
-        Spacer(Modifier.height(8.dp))
-        shares.forEach { (userId, minor) ->
-            ShareRow(state = state, userId = userId, amountMinor = minor)
-            HorizontalHairline()
-        }
-    } else {
-        Text(
-            viewModel.serverValidationError(state) ?: "Enter per-person values above",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(vertical = 12.dp),
-        )
-    }
 }
 
 @Composable
 private fun MemberChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .heightIn(min = 44.dp)
+            .clip(CircleShape)
             .background(
                 if (selected) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceVariant
             )
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }
 
-@Composable
-private fun ServerParticipantsStep(state: AddExpenseUiState, viewModel: AddExpenseViewModel, onSaved: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-    ) {
-        Text(
-            "Review",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(vertical = 12.dp),
-        )
-        val payers = state.draft.payers
-        val payerText = when {
-            payers.isEmpty() -> "Paid by you"
-            payers.size == 1 -> "Paid by ${nameOf(state, payers.keys.first())}"
-            else -> "Split payment: " + payers.entries.joinToString(" + ") { (uid, m) ->
-                "${nameOf(state, uid)} ₹${formatInr(m)}"
-            }
-        }
-        Text(payerText, style = MaterialTheme.typography.bodyLarge)
-        Text(
-            "${state.draft.includedServer.size} people · ${splitLabel(state.draft.splitType)} · saved to your teramera account",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Text(
-            (if (state.draft.groupId == null) "No group" else state.groups.firstOrNull { it.id == state.draft.groupId }?.name)
-                ?: "",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        val payersSumOk = state.draft.payers.isEmpty() ||
-            state.draft.payers.values.sum() == state.draft.amountMinor
-        Button(
-            onClick = { viewModel.save(onDone = onSaved) },
-            enabled = !state.saving && state.draft.title.isNotBlank() &&
-                state.draft.amountMinor > 0 && serverSharesValid(state, viewModel) && payersSumOk,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
-                .height(56.dp),
-        ) {
-            Text("Save expense · ₹${formatInr(state.draft.amountMinor)}", style = MaterialTheme.typography.labelLarge)
-        }
-        state.error?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        }
-    }
-}
-
 private fun splitLabel(type: SplitType): String = when (type) {
-    SplitType.EQUAL -> "equal shares"
+    SplitType.EQUAL -> "equal"
     SplitType.EXACT -> "exact amounts"
     SplitType.PERCENT -> "percentages"
     SplitType.SHARES -> "shares"

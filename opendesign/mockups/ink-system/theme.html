@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teramera-ink — theme board</title>
+<link rel="stylesheet" href="../../design-systems/teramera-ink/tokens/colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); padding: 48px 24px 96px; transition: background var(--t-med), color var(--t-med); }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+  h1 { font-family: var(--font-display); font-size: 46px; font-weight: 800; letter-spacing: -1.5px; line-height: 1; }
+  .lede { color: var(--fg-2); font-size: 15px; line-height: 1.6; max-width: 620px; margin-top: 12px; }
+  .theme-btn { border: 1px solid var(--border-strong); background: var(--surface); color: var(--fg); font-family: var(--font-ui); font-size: 13px; font-weight: 600; padding: 11px 18px; border-radius: var(--r-pill); cursor: pointer; min-height: 44px; }
+
+  h2 { font-family: var(--font-display); font-size: 24px; font-weight: 700; margin: 60px 0 4px; }
+  .sub { color: var(--fg-2); font-size: 14px; margin-bottom: 20px; }
+
+  .card { background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-card); padding: 26px; }
+
+  /* palette */
+  .palette { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .sw { border-radius: var(--r-md); min-height: 112px; padding: 14px; display: flex; flex-direction: column; justify-content: flex-end; }
+  .sw b { font-size: 13px; } .sw span { font-family: ui-monospace, monospace; font-size: 11px; opacity: .85; }
+  .sw.ink { background: var(--ink-900); color: var(--paper-100); }
+  .sw.cream { background: var(--paper-000); color: var(--ink-900); box-shadow: inset 0 0 0 1px var(--border); }
+  .sw.peach { background: var(--peach); color: var(--on-accent); }
+  .sw.mint { background: var(--mint); color: var(--ink-900); }
+  .sw.butter { background: var(--butter); color: var(--ink-900); }
+  .sw.neg { background: var(--neg); color: var(--paper-100); }
+  .sw.neg span { opacity: 1; }
+
+  /* type */
+  .type-row { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .type-row:last-child { border-bottom: 0; }
+  .type-row .sample { font-family: var(--font-display); }
+  .type-row .meta { font-family: ui-monospace, monospace; font-size: 11px; color: var(--fg-3); white-space: nowrap; }
+  .t-hero { font-size: 44px; font-weight: 800; letter-spacing: -1.5px; }
+  .t-title { font-size: 30px; font-weight: 700; letter-spacing: -.8px; }
+  .t-sec { font-size: 22px; font-weight: 700; }
+  .t-body { font-family: var(--font-ui); font-size: 15px; font-weight: 400; }
+
+  /* shape */
+  .shapes { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; }
+  .shape { text-align: center; }
+  .shape i { display: block; background: var(--surface-sunken); border: 1px solid var(--border); }
+  .shape span { display: block; font-family: ui-monospace, monospace; font-size: 11px; color: var(--fg-3); margin-top: 8px; }
+  .r-card i { width: 92px; height: 64px; border-radius: var(--r-lg); }
+  .r-input i { width: 92px; height: 56px; border-radius: var(--r-md); }
+  .r-pill i { width: 92px; height: 44px; border-radius: var(--r-pill); background: var(--peach); border-color: var(--peach); }
+  .r-avatar i { width: 64px; height: 64px; border-radius: 50%; background: var(--mint); border-color: var(--mint); }
+  .blob-demo { width: 100%; height: 120px; background: var(--ink-900); border-radius: var(--blob-a); }
+
+  /* mascot */
+  .mascots { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+  .m { background: var(--surface-sunken); border-radius: var(--r-md); padding: 18px; text-align: center; }
+  .m .art { height: 108px; display: flex; align-items: center; justify-content: center; }
+  .m b { display: block; font-size: 13px; margin-top: 8px; }
+  .m span { display: block; font-size: 12px; color: var(--fg-2); margin-top: 2px; }
+
+  /* nav */
+  .nav-demo { position: relative; height: 190px; background: var(--bg); border-radius: var(--r-lg); overflow: hidden; box-shadow: inset 0 0 0 1px var(--border); }
+  .nav-demo .blob { position: absolute; inset: -40px -20px auto -20px; height: 120px; background: var(--ink-900); border-radius: var(--blob-b); }
+  .floating-nav { position: absolute; left: 16px; right: 16px; bottom: 16px; background: var(--ink-900); border-radius: var(--r-pill); padding: 10px 14px; display: flex; box-shadow: var(--shadow-float); }
+  .nav-it { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: oklch(0.78 0.015 85); }
+  .nav-it.on { color: var(--peach); }
+  .nav-it svg { width: 22px; height: 22px; }
+  .nav-fab { position: absolute; right: 26px; bottom: 58px; width: 54px; height: 54px; border-radius: 50%; background: var(--paper-000); color: var(--ink-900); display: grid; place-items: center; box-shadow: var(--shadow-float); border: 3px solid var(--bg); }
+
+  /* components */
+  .comps { display: grid; grid-template-columns: 1.1fr .9fr; gap: 16px; }
+  @media (max-width: 800px) { .comps { grid-template-columns: 1fr; } }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+  .btn { border: 0; border-radius: var(--r-pill); padding: 15px 22px; font-family: var(--font-ui); font-size: 15px; font-weight: 700; min-height: 52px; }
+  .btn-primary { background: var(--peach); color: var(--on-accent); }
+  .btn-ink { background: var(--ink-900); color: var(--on-ink); }
+  .btn-ghost { background: transparent; color: var(--fg); box-shadow: inset 0 0 0 1.5px var(--border-strong); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { border-radius: var(--r-pill); padding: 10px 16px; font-size: 13px; font-weight: 600; background: var(--surface-sunken); color: var(--fg-2); }
+  .chip.on { background: var(--peach-soft); color: var(--fg); box-shadow: inset 0 0 0 1.5px var(--peach); }
+  .field { background: var(--surface-sunken); border-radius: var(--r-md); padding: 16px 18px; color: var(--fg-3); font-size: 15px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: 0; }
+  .ava { width: 44px; height: 44px; border-radius: 50%; color: var(--ink-900); font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+  .row .nm { font-size: 15px; font-weight: 600; }
+  .row .mt { font-size: 12px; color: var(--fg-2); }
+  .row .amt { margin-left: auto; font-family: var(--font-display); font-size: 16px; font-weight: 700; font-feature-settings: "tnum"; }
+  .amt.pos { color: var(--pos); } .amt.neg { color: var(--neg); }
+
+  .note { font-size: 13px; color: var(--fg-2); line-height: 1.6; margin-top: 10px; }
+  a { color: var(--fg); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+  @media (max-width: 700px) { h1 { font-size: 36px; } .type-row .sample { font-size: .8em; } }
+
+  /* dark: ink-900 equals the page, so lift ink surfaces one step */
+  [data-theme="dark"] .ink-head,
+  [data-theme="dark"] .sheet-head,
+  [data-theme="dark"] .hero,
+  [data-theme="dark"] .nav,
+  [data-theme="dark"] .floating-nav,
+  [data-theme="dark"] .nav-demo .blob,
+  [data-theme="dark"] .sw.ink {
+    background: var(--ink-800);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  [data-theme="dark"] .blob-demo {
+    background: var(--ink-700);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>teramera-ink</h1>
+      <p class="lede">Ink canvas, cream paper, peach light. One dark ground carries the brand; peach is the only action colour; mint keeps the tere|mera meaning. Baanto lives on every screen.</p>
+    </div>
+    <button class="theme-btn" onclick="toggleTheme()">Toggle dark</button>
+  </header>
+
+  <h2>Palette</h2>
+  <p class="sub">Six values. Ink and cream do the work; peach and mint never share a gradient.</p>
+  <div class="palette">
+    <div class="sw ink"><b>Ink</b><span>oklch(.19 .028 285)</span></div>
+    <div class="sw cream"><b>Paper</b><span>#FFFDF8</span></div>
+    <div class="sw peach"><b>Peach · action</b><span>oklch(.80 .095 48)</span></div>
+    <div class="sw mint"><b>Mint · identity</b><span>oklch(.76 .075 185)</span></div>
+    <div class="sw butter"><b>Butter · highlight</b><span>oklch(.88 .095 88)</span></div>
+    <div class="sw neg"><b>Warm red · you owe</b><span>oklch(.60 .16 30)</span></div>
+  </div>
+
+  <h2>Type</h2>
+  <p class="sub">Bricolage for display, Instrument Sans for everything else. Sentence case, tight tracking on the big sizes.</p>
+  <div class="card">
+    <div class="type-row"><span class="sample t-hero">₹1,24,500</span><span class="meta">44 / 800 / −1.5</span></div>
+    <div class="type-row"><span class="sample t-title">Goa trip</span><span class="meta">30 / 700 / −0.8</span></div>
+    <div class="type-row"><span class="sample t-sec">Owes you</span><span class="meta">22 / 700</span></div>
+    <div class="type-row"><span class="t-body">You’re owed ₹5,750 across three friends.</span><span class="meta">15 / 400</span></div>
+    <div class="type-row"><span style="font-size:12px;font-weight:600;color:var(--fg-2)">TODAY 4:12 PM · CAPTION</span><span class="meta">12 / 600</span></div>
+  </div>
+
+  <h2>Shape</h2>
+  <p class="sub">Everything is rounder than v1. Cards 28, inputs 20, actions pills. Headers use organic blobs.</p>
+  <div class="card">
+    <div class="shapes">
+      <div class="shape r-card"><i></i><span>card 28</span></div>
+      <div class="shape r-input"><i></i><span>input 20</span></div>
+      <div class="shape r-pill"><i></i><span>pill</span></div>
+      <div class="shape r-avatar"><i></i><span>avatar</span></div>
+    </div>
+    <div style="margin-top:24px" class="blob-demo"></div>
+  </div>
+
+  <h2>Baanto</h2>
+  <p class="sub">Peach half is “tere”, mint half is “mera”. Cream face, navy coin. Never speaks.</p>
+  <div class="mascots">
+    <div class="m"><div class="art" data-baanto="idle"></div><b>Idle</b><span>empty, first run</span></div>
+    <div class="m"><div class="art" data-baanto="pleased"></div><b>Pleased</b><span>settled, saved</span></div>
+    <div class="m"><div class="art" data-baanto="thinking"></div><b>Thinking</b><span>splitting, syncing</span></div>
+    <div class="m"><div class="art" data-baanto="sorry"></div><b>Sorry</b><span>offline, error</span></div>
+  </div>
+
+  <h2>Navigation</h2>
+  <p class="sub">A floating ink pill. Active item peach, cream FAB overlaps the top edge.</p>
+  <div class="nav-demo">
+    <div class="blob"></div>
+    <div class="nav-fab"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+    <div class="floating-nav">
+      <div class="nav-it on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>Home</div>
+      <div class="nav-it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="10" r="2.4"/><path d="M15 19a4.5 4.5 0 0 1 5.5-3.4"/></svg>Groups</div>
+      <div class="nav-it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg>Activity</div>
+      <div class="nav-it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>Settle</div>
+    </div>
+  </div>
+
+  <h2>Components</h2>
+  <div class="comps">
+    <div class="card stack">
+      <button class="btn btn-primary">Add expense</button>
+      <button class="btn btn-ink">Settle up</button>
+      <button class="btn btn-ghost">Not now</button>
+      <div class="chips">
+        <span class="chip on">Equal</span><span class="chip">Exact</span><span class="chip">Percent</span><span class="chip">Shares</span>
+      </div>
+      <div class="field">What was it for?</div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div class="ava" style="background:var(--peach)">PR</div>
+        <div><div class="nm">Priya</div><div class="mt">last settled Today 11:05 am</div></div>
+        <div class="amt pos">₹1,240</div>
+      </div>
+      <div class="row">
+        <div class="ava" style="background:var(--mint)">AK</div>
+        <div><div class="nm">Arjun</div><div class="mt">last settled 3 Mar</div></div>
+        <div class="amt pos">₹4,510</div>
+      </div>
+      <div class="row">
+        <div class="ava" style="background:var(--butter)">MK</div>
+        <div><div class="nm">Meera</div><div class="mt">last settled Yesterday</div></div>
+        <div class="amt neg">₹920</div>
+      </div>
+      <p class="note">Hairlines only inside cards. Row avatars rotate peach → mint → butter, never a fourth hue.</p>
+    </div>
+  </div>
+
+  <h2>Next</h2>
+  <p class="sub"><a href="screens.html">Screens →</a> &nbsp;·&nbsp; <a href="add-expense.html">Add expense prototype →</a></p>
+</div>
+
+<script>
+const FACES = {
+  idle: `<circle cx="79" cy="97" r="6.5" fill="var(--ink-900)"/><circle cx="121" cy="97" r="6.5" fill="var(--ink-900)"/><path d="M86 118 q14 11 28 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/>`,
+  pleased: `<path d="M72 99 q7 -8 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M114 99 q7 -8 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M82 114 q18 19 36 0" fill="none" stroke="var(--ink-900)" stroke-width="5.5" stroke-linecap="round"/>`,
+  thinking: `<circle cx="79" cy="97" r="6.5" fill="var(--ink-900)"/><path d="M114 97 q7 6 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M92 122 h16" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><g fill="var(--fg-3)"><circle cx="150" cy="66" r="4"/><circle cx="160" cy="56" r="5.5"/><circle cx="174" cy="44" r="7"/></g>`,
+  sorry: `<path d="M72 94 q7 7 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M114 94 q7 7 14 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/><path d="M86 126 q14 -11 28 0" fill="none" stroke="var(--ink-900)" stroke-width="5" stroke-linecap="round"/>`
+};
+let seq = 0;
+function baanto(state = 'idle', size = 96, coin = true) {
+  const id = `b${++seq}`;
+  return `<svg viewBox="0 0 200 200" width="${size}" height="${size}" role="img" aria-label="Baanto, ${state}">
+    <defs><clipPath id="${id}"><circle cx="100" cy="105" r="60"/></clipPath></defs>
+    <g clip-path="url(#${id})">
+      <rect width="200" height="200" fill="var(--peach)"/>
+      <rect x="100" y="-20" width="120" height="260" fill="var(--mint)" transform="rotate(-13 100 105)"/>
+    </g>
+    <circle cx="100" cy="105" r="60" fill="none" stroke="var(--paper-100)" stroke-opacity=".35" stroke-width="2"/>
+    ${FACES[state] || FACES.idle}
+    ${coin ? `<g><circle cx="163" cy="142" r="17" fill="var(--paper-100)" stroke="var(--ink-900)" stroke-width="2.5"/><text x="163" y="150" text-anchor="middle" font-family="Bricolage Grotesque, serif" font-size="19" font-weight="800" fill="var(--ink-900)">₹</text></g>` : ''}
+  </svg>`;
+}
+document.querySelectorAll('[data-baanto]').forEach((el) => {
+  el.innerHTML = baanto(el.dataset.baanto, Number(el.dataset.size || 96));
+});
+function toggleTheme() {
+  const r = document.documentElement;
+  r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark';
+}
+</script>
+</body>
+</html>

@@ -1,17 +1,25 @@
 package com.example.teramera.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,8 +31,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.teramera.ui.components.PlusIcon
+import com.example.teramera.ui.theme.Ink900
+import com.example.teramera.ui.theme.Paper000
+import com.example.teramera.ui.theme.Paper100
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -84,7 +102,9 @@ fun AppRoot() {
 
     when (loggedIn) {
         null -> Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -249,60 +269,28 @@ private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        // Headers own the status bar and the floating pill owns the nav bar.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             // group detail brings its own action bar; two stacked bars waste the screen
             if (!onGroupDetail) {
-                Column {
-                    androidx.compose.material3.HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        thickness = 1.dp,
-                    )
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                        navItems.forEach { item ->
-                            val selected = isSelected(item.route)
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = {
-                                    navController.navigate(item.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = {
-                                    item.icon(
-                                        if (selected) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
-                                label = {
-                                    Text(item.label, style = MaterialTheme.typography.labelMedium)
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                ),
-                            )
+                FloatingNav(
+                    items = navItems,
+                    isSelected = { isSelected(it) },
+                    showAdd = currentRoute == Routes.HOME || currentRoute == Routes.GROUPS,
+                    onSelect = { route ->
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                    }
-                }
-            }
-        },
-        floatingActionButton = {
-            if (currentRoute == Routes.HOME || currentRoute == Routes.GROUPS) {
-                ExtendedFloatingActionButton(
-                    onClick = {
+                    },
+                    onAdd = {
                         // a group picked by an earlier group-screen add must not leak in
                         addExpenseGroupId = null
                         showAddExpense = true
                     },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-                ) {
-                    Text("+  Add expense", style = MaterialTheme.typography.labelLarge)
-                }
+                )
             }
         },
     ) { innerPadding ->
@@ -354,6 +342,83 @@ private fun MainApp(loggedIn: Boolean?, sessionViewModel: SessionViewModel) {
                 onDismiss = { showAddExpense = false },
                 fixedGroupId = addExpenseGroupId,
             )
+        }
+    }
+}
+
+/**
+ * Floating ink pill. Four tabs, 44dp minimum targets, cream inactive and
+ * peach active. The cream FAB overlaps the pill's top edge.
+ */
+@Composable
+private fun FloatingNav(
+    items: List<NavItem>,
+    isSelected: (String) -> Boolean,
+    showAdd: Boolean,
+    onSelect: (String) -> Unit,
+    onAdd: () -> Unit,
+) {
+    val inactive = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.78f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 18.dp)
+            .height(96.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .shadow(18.dp, CircleShape)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.inverseSurface)
+                .heightIn(min = 64.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items.forEach { item ->
+                val selected = isSelected(item.route)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clip(CircleShape)
+                        .selectable(
+                            selected = selected,
+                            role = Role.Tab,
+                            onClick = { onSelect(item.route) },
+                        )
+                        .padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    item.icon(if (selected) MaterialTheme.colorScheme.primary else inactive)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        item.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected) MaterialTheme.colorScheme.primary else inactive,
+                    )
+                }
+            }
+        }
+        if (showAdd) {
+            FloatingActionButton(
+                onClick = onAdd,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 6.dp)
+                    .size(56.dp)
+                    .shadow(14.dp, CircleShape)
+                    .semantics { contentDescription = "Add expense" },
+                shape = CircleShape,
+                containerColor = Paper000,
+                contentColor = Ink900,
+            ) {
+                PlusIcon(tint = Ink900, size = 24.dp)
+            }
         }
     }
 }

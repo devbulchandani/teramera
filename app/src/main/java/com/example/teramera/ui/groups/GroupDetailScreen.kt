@@ -1,15 +1,18 @@
 package com.example.teramera.ui.groups
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,18 +32,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.data.local.PaymentMethod
 import com.example.teramera.data.repository.initials
 import com.example.teramera.core.time.TimeFormat
+import com.example.teramera.ui.components.ArrowBackIcon
+import com.example.teramera.ui.components.Baanto
+import com.example.teramera.ui.components.BaantoState
+import com.example.teramera.ui.components.HeaderIconButton
+import com.example.teramera.ui.components.InkHeader
+import com.example.teramera.ui.components.PlusIcon
+import com.example.teramera.ui.components.ShareIcon
 import com.example.teramera.ui.home.formatInr
+import com.example.teramera.ui.theme.Ink900
+import com.example.teramera.ui.theme.Paper000
+import com.example.teramera.ui.theme.Paper100
 
 @Composable
 fun GroupDetailScreen(
@@ -61,7 +72,7 @@ fun GroupDetailScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            androidx.compose.material3.CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            Baanto(state = BaantoState.Thinking, size = 88.dp, animate = true)
             Spacer(Modifier.height(12.dp))
             Text("Loading group…", style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -74,6 +85,8 @@ fun GroupDetailScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Baanto(state = BaantoState.Sorry, size = 88.dp)
+            Spacer(Modifier.height(12.dp))
             Text("Something went wrong", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
             Text(
@@ -85,7 +98,7 @@ fun GroupDetailScreen(
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = viewModel::refresh,
-                shape = RoundedCornerShape(16.dp),
+                shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -127,7 +140,10 @@ fun GroupDetailScreen(
         )
     }
 
-    Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    ) { innerPadding ->
         androidx.compose.foundation.layout.Box(
             modifier = Modifier
                 .padding(innerPadding)
@@ -146,15 +162,26 @@ fun GroupDetailScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 20.dp, end = 20.dp, bottom = 120.dp,
+                        start = 20.dp, end = 20.dp, top = 18.dp, bottom = 130.dp,
                     ),
                 ) {
-                    if (d.simplifiedDebts.isNotEmpty()) {
-                        item { SimplifiedDebtsCard(d) }
-                    }
-                    items(d.expenses, key = { it.id }) { line ->
-                        ExpenseRow(line, onClick = { viewModel.showEditExpense(line) })
-                        Hairline()
+                    item { SimplifiedDebtsCard(d) }
+                    if (d.expenses.isNotEmpty()) {
+                        item { SectionLabel("Expenses") }
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(MaterialTheme.shapes.large)
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(horizontal = 16.dp),
+                            ) {
+                                d.expenses.forEachIndexed { index, line ->
+                                    ExpenseRow(line, onClick = { viewModel.showEditExpense(line) })
+                                    if (index != d.expenses.lastIndex) Hairline()
+                                }
+                            }
+                        }
                     }
                     if (d.expenses.isEmpty()) {
                         item {
@@ -169,36 +196,38 @@ fun GroupDetailScreen(
                 }
             }
 
-            // Dual action bar
+            // Dual action bar: ghost + peach, pills, no global nav here.
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
+                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Button(
                     onClick = viewModel::openSettlePicker,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        containerColor = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.onSurface,
                     ),
                     modifier = Modifier
                         .weight(1f)
-                        .height(52.dp),
+                        .height(54.dp)
+                        .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
                 ) { Text("Settle up", style = MaterialTheme.typography.labelLarge) }
                 Button(
                     onClick = { onAddExpense(d.groupId) },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
                     ),
                     modifier = Modifier
                         .weight(1f)
-                        .height(52.dp),
+                        .height(54.dp),
                 ) { Text("Add expense", style = MaterialTheme.typography.labelLarge) }
             }
         }
@@ -214,116 +243,77 @@ private fun GroupHeader(
     onAddMember: () -> Unit,
     onShare: () -> Unit,
 ) {
-    val violet = MaterialTheme.colorScheme.secondary
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                Brush.radialGradient(
-                    listOf(violet, violet.copy(alpha = 0.75f), Color.Transparent),
-                    radius = 900f,
-                )
-            )
-            .background(violet)
-            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.16f))
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("←", color = Color.White, style = MaterialTheme.typography.titleMedium)
+    InkHeader {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HeaderIconButton(contentDescription = "Back", onClick = onBack) {
+                ArrowBackIcon(tint = Paper100, size = 20.dp)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.16f))
-                        .clickable(onClick = onShare),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("⇪", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                HeaderIconButton(contentDescription = "Share group invite", onClick = onShare) {
+                    ShareIcon(tint = Paper100, size = 20.dp)
                 }
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.16f))
-                        .clickable(onClick = onAddMember),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("+", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                HeaderIconButton(contentDescription = "Add member", onClick = onAddMember) {
+                    PlusIcon(tint = Paper100, size = 20.dp)
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(MaterialTheme.colorScheme.primary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(groupName.take(2).uppercase(), color = Color.White, style = MaterialTheme.typography.titleMedium)
-            }
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text(groupName, color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    groupName,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    style = MaterialTheme.typography.titleLarge,
+                )
                 Text(
                     "${memberInitials.size} members · ₹${formatInr(totalSpentMinor)} spent",
-                    color = Color.White.copy(alpha = 0.78f),
+                    color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.78f),
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
-        }
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            memberInitials.forEach { (initials, isSelf) ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(52.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.35f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(initials, color = Color.White, style = MaterialTheme.typography.labelMedium)
-                    }
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        if (isSelf) "You" else initials,
-                        color = Color.White.copy(alpha = 0.85f),
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                    )
-                }
-            }
+            Baanto(state = BaantoState.Idle, size = 56.dp)
         }
     }
 }
 
 @Composable
 private fun SimplifiedDebtsCard(d: com.example.teramera.data.repository.GroupDetail) {
+    val owedToYou = d.simplifiedDebts.filter { it.toUserId == d.selfUserId }.sumOf { it.amountMinor }
+    val youOwe = d.simplifiedDebts.filter { it.fromUserId == d.selfUserId }.sumOf { it.amountMinor }
+    val net = owedToYou - youOwe
     Column(
         modifier = Modifier
-            .padding(top = 20.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp),
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.primary)
+            .padding(18.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                "SIMPLIFY DEBTS",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Text(
+            when {
+                net > 0 -> "You are owed"
+                net < 0 -> "You owe"
+                else -> "All settled up"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
+        )
+        Text(
+            "₹${formatInr(kotlin.math.abs(net))}",
+            style = MaterialTheme.typography.displayMedium,
+            color = MaterialTheme.colorScheme.onPrimary,
+        )
+        Text(
+            "₹${formatInr(d.totalSpentMinor)} spent · ${d.expenses.size} expenses",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
+            modifier = Modifier.padding(top = 4.dp, bottom = if (d.simplifiedDebts.isEmpty()) 0.dp else 6.dp),
+        )
+        if (d.simplifiedDebts.isNotEmpty()) {
             Text(
                 if (d.worstCasePayments > d.simplifiedDebts.size) {
                     "${d.simplifiedDebts.size} payments instead of ${d.worstCasePayments}"
@@ -332,7 +322,8 @@ private fun SimplifiedDebtsCard(d: com.example.teramera.data.repository.GroupDet
                 },
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.padding(top = 8.dp),
             )
         }
         d.simplifiedDebts.forEach { transfer ->
@@ -344,22 +335,27 @@ private fun SimplifiedDebtsCard(d: com.example.teramera.data.repository.GroupDet
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.secondary),
+                        .background(MaterialTheme.colorScheme.surface),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         initialsOf(transfer.fromName),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onPrimary,
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
                 Spacer(Modifier.width(10.dp))
                 Text(
                     "${shortName(transfer.fromName)} pays ${shortName(transfer.toName)}",
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.weight(1f),
                 )
-                Text("₹${formatInr(transfer.amountMinor)}", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "₹${formatInr(transfer.amountMinor)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
             }
         }
     }
@@ -392,10 +388,10 @@ private fun ExpenseRow(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(line.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp))
+            Text(line.title, style = MaterialTheme.typography.titleMedium)
             Text(
                 "paid by ${line.payerName}${if (line.payerCount > 1) " +${line.payerCount - 1}" else ""} · ${line.participantCount} people · ${TimeFormat.dayTime(line.createdAt)}",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -415,6 +411,16 @@ private fun shortName(fullName: String): String =
 
 private fun initialsOf(text: String): String =
     text.split(" ").filter { it.isNotBlank() }.take(2).map { it.first().uppercaseChar() }.joinToString("")
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp),
+    )
+}
 
 @Composable
 private fun Hairline() {
@@ -438,7 +444,7 @@ private fun AddMemberDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         containerColor = MaterialTheme.colorScheme.background,
         title = { Text("Add member", style = MaterialTheme.typography.titleLarge) },
         text = {
@@ -449,6 +455,7 @@ private fun AddMemberDialog(
                     label = { Text("Friend's email") },
                     singleLine = true,
                     enabled = state.found == null,
+                    shape = MaterialTheme.shapes.medium,
                 )
                 Spacer(Modifier.height(8.dp))
                 when {
@@ -469,7 +476,7 @@ private fun AddMemberDialog(
                         ) {
                             Text(
                                 initials(state.found!!.name.ifBlank { "?" }),
-                                color = Color.White,
+                                color = Ink900,
                                 style = MaterialTheme.typography.labelMedium,
                             )
                         }
@@ -477,7 +484,7 @@ private fun AddMemberDialog(
                         Column {
                             Text(
                                 "Found: " + state.found!!.name.ifBlank { state.found!!.phone ?: state.found!!.email ?: "user" },
-                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
+                                style = MaterialTheme.typography.titleMedium,
                             )
                             Text(
                                 "Ready to join this group",
@@ -538,7 +545,7 @@ private fun GroupSettleDialog(
     val transfer = state.transfer
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         title = { Text(if (transfer == null) "Settle up" else "Record payment") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -559,7 +566,7 @@ private fun GroupSettleDialog(
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         "${shortName(debt.fromName)} → ${shortName(debt.toName)}",
-                                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+                                        style = MaterialTheme.typography.titleMedium,
                                     )
                                     Text(
                                         "₹${formatInr(debt.amountMinor)}",
@@ -659,7 +666,7 @@ private fun EditExpenseDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         title = { Text(if (confirmDelete) "Delete expense?" else "Edit expense") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -674,6 +681,7 @@ private fun EditExpenseDialog(
                         onValueChange = { title = it },
                         label = { Text("Description") },
                         singleLine = true,
+                        shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     androidx.compose.material3.OutlinedTextField(
@@ -688,6 +696,7 @@ private fun EditExpenseDialog(
                         },
                         label = { Text("Amount (₹)") },
                         singleLine = true,
+                        shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

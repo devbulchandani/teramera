@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-29T20:38:49+05:30",
+  "generated": "2026-10-29T22:15:28+05:30",
   "sections": [
     {
       "id": "mockups",
@@ -32,6 +32,23 @@
             {
               "label": "home-balance.html",
               "path": "mockups/core-screens/home-balance.html"
+            }
+          ]
+        },
+        {
+          "slug": "ink-system",
+          "files": [
+            {
+              "label": "add-expense.html",
+              "path": "mockups/ink-system/add-expense.html"
+            },
+            {
+              "label": "screens.html",
+              "path": "mockups/ink-system/screens.html"
+            },
+            {
+              "label": "theme.html",
+              "path": "mockups/ink-system/theme.html"
             }
           ]
         },
@@ -75,6 +92,31 @@
       "id": "design-systems",
       "label": "Design Systems",
       "groups": [
+        {
+          "slug": "teramera-ink",
+          "files": [
+            {
+              "label": "README.md",
+              "path": "design-systems/teramera-ink/README.md"
+            },
+            {
+              "label": "SKILL.md",
+              "path": "design-systems/teramera-ink/SKILL.md"
+            },
+            {
+              "label": "style-notes.md",
+              "path": "design-systems/teramera-ink/brand/style-notes.md"
+            },
+            {
+              "label": "voice-and-tone.md",
+              "path": "design-systems/teramera-ink/brand/voice-and-tone.md"
+            },
+            {
+              "label": "colors_and_type.css",
+              "path": "design-systems/teramera-ink/tokens/colors_and_type.css"
+            }
+          ]
+        },
         {
           "slug": "teramera-product",
           "files": [

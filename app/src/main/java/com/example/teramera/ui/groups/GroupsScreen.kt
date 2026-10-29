@@ -2,8 +2,10 @@ package com.example.teramera.ui.groups
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,9 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -27,13 +28,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.data.repository.BalanceEntry
+import com.example.teramera.ui.components.Baanto
+import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.components.EmptyState
+import com.example.teramera.ui.components.HeaderIconButton
+import com.example.teramera.ui.components.InkHeader
+import com.example.teramera.ui.components.PlusIcon
 import com.example.teramera.ui.home.formatInr
+import com.example.teramera.ui.theme.Butter
+import com.example.teramera.ui.theme.Ink900
+import com.example.teramera.ui.theme.Mint
+import com.example.teramera.ui.theme.Paper100
+import com.example.teramera.ui.theme.Peach
 
 @Composable
 fun GroupsScreen(
@@ -42,22 +53,36 @@ fun GroupsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showCreate by remember { mutableStateOf(false) }
+    val net = state.groups.sumOf { it.amountMinor }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-        ) {
-            Text(
-                "Groups",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
-            Button(onClick = { showCreate = true }, enabled = !state.creating) {
-                Text("+ New group", style = MaterialTheme.typography.labelMedium)
+        InkHeader {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "Groups",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Baanto(state = BaantoState.Pleased, size = 40.dp)
+                Spacer(Modifier.width(8.dp))
+                HeaderIconButton(
+                    contentDescription = "New group",
+                    onClick = { showCreate = true },
+                    enabled = !state.creating,
+                ) {
+                    PlusIcon(tint = Paper100, size = 22.dp)
+                }
             }
+            Text(
+                "${state.groups.size} active · ₹${formatInr(kotlin.math.abs(net))} net",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.78f),
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
 
         state.error?.let {
@@ -65,49 +90,16 @@ fun GroupsScreen(
                 it,
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 20.dp),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
 
-        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 88.dp)) {
-            items(state.groups, key = { it.id }) { group ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .height(64.dp)
-                        .clickable { onOpenGroup(group.id) },
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.secondary),
-                    ) {
-                        androidx.compose.material3.Text(
-                            group.initials,
-                            color = MaterialTheme.colorScheme.onSecondary,
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.align(Alignment.Center),
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(group.name, style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp))
-                        Text(
-                            group.subtitle,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    val positive = group.amountMinor >= 0
-                    Text(
-                        text = if (group.amountMinor == 0L) "settled" else "₹${formatInr(kotlin.math.abs(group.amountMinor))}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (positive) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.error,
-                    )
-                }
+        LazyColumn(
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            itemsIndexed(state.groups, key = { _, group -> group.id }) { index, group ->
+                GroupCard(group = group, index = index, onClick = { onOpenGroup(group.id) })
             }
             if (state.groups.isEmpty()) {
                 item {
@@ -137,6 +129,55 @@ fun GroupsScreen(
 }
 
 @Composable
+private fun GroupCard(group: BalanceEntry, index: Int, onClick: () -> Unit) {
+    val tone = when (index % 3) {
+        0 -> Peach
+        1 -> Mint
+        else -> Butter
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(tone),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                group.initials,
+                color = Ink900,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(group.name, style = MaterialTheme.typography.titleMedium)
+            Text(
+                group.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Text(
+            text = if (group.amountMinor == 0L) "settled" else "₹${formatInr(kotlin.math.abs(group.amountMinor))}",
+            style = MaterialTheme.typography.titleMedium,
+            color = if (group.amountMinor >= 0) MaterialTheme.colorScheme.tertiary
+            else MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+@Composable
 private fun CreateGroupDialog(
     creating: Boolean,
     onDismiss: () -> Unit,
@@ -145,6 +186,7 @@ private fun CreateGroupDialog(
     var name by remember { mutableStateOf("") }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.large,
         title = { Text("New group") },
         text = {
             OutlinedTextField(
@@ -152,13 +194,14 @@ private fun CreateGroupDialog(
                 onValueChange = { name = it },
                 label = { Text("Group name") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.medium,
             )
         },
         confirmButton = {
             androidx.compose.material3.TextButton(
                 onClick = { onCreate(name) },
                 enabled = name.isNotBlank() && !creating,
-            ) { Text("Create") }
+            ) { Text("Create", fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }

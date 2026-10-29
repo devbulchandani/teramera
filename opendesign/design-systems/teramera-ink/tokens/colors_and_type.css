@@ -1,0 +1,150 @@
+/* teramera-ink — second-generation product system
+   Ink canvas, cream paper, peach light. The tere|mera duality survives as
+   peach (tere) and mint (mera) on a single deep-navy ground.
+
+   Palette direction: one dominant dark (ink), one dominant light (cream),
+   two accents that share lightness (peach, mint), one highlight (butter). */
+
+:root {
+  /* ---- raw: ink (the ground) ---- */
+  --ink-900: oklch(0.19 0.028 285);   /* page-inverse, nav, headers */
+  --ink-800: oklch(0.23 0.032 285);   /* raised ink surface */
+  --ink-700: oklch(0.28 0.035 285);   /* ink border / pressed */
+  --ink-500: oklch(0.44 0.03 285);    /* secondary text on cream */
+  --ink-300: oklch(0.54 0.02 285);    /* tertiary text on cream */
+
+  /* ---- raw: paper ---- */
+  --paper-000: #FFFDF8;               /* cards */
+  --paper-100: oklch(0.978 0.008 85); /* page */
+  --paper-200: oklch(0.955 0.012 85); /* recessed / input */
+  --paper-300: oklch(0.925 0.016 84); /* hairline / pressed */
+
+  /* ---- raw: accents (matched lightness, chroma within 0.02) ---- */
+  --peach: oklch(0.80 0.095 48);      /* tere · primary action */
+  --peach-deep: oklch(0.70 0.12 45);
+  --peach-soft: oklch(0.93 0.045 60);
+  --mint: oklch(0.76 0.075 185);      /* mera · secondary identity */
+  --mint-deep: oklch(0.58 0.075 185);
+  --mint-soft: oklch(0.93 0.035 185);
+  --butter: oklch(0.88 0.095 88);     /* highlight / selected day */
+  --butter-soft: oklch(0.95 0.045 90);
+
+  /* ---- status ---- */
+  --pos: oklch(0.53 0.09 178);        /* owed to you */
+  --pos-soft: oklch(0.94 0.03 178);
+  --neg: oklch(0.48 0.16 30);         /* you owe */
+  --neg-soft: oklch(0.94 0.045 32);
+
+  /* ---- semantic ---- */
+  --bg: var(--paper-100);
+  --surface: var(--paper-000);
+  --surface-raised: var(--paper-000);
+  --surface-sunken: var(--paper-200);
+  --fg: var(--ink-900);
+  --fg-2: var(--ink-500);
+  --fg-3: var(--ink-300);
+  --fg-inverse: var(--paper-100);
+  --fg-2-inverse: oklch(0.80 0.015 85);
+  --border: var(--paper-300);
+  --border-strong: oklch(0.86 0.018 82);
+  --accent: var(--peach);
+  --accent-deep: var(--peach-deep);
+  --accent-soft: var(--peach-soft);
+  --accent-2: var(--mint);
+  --accent-2-deep: var(--mint-deep);
+  --accent-2-soft: var(--mint-soft);
+  --highlight: var(--butter);
+  --highlight-soft: var(--butter-soft);
+  --on-accent: oklch(0.22 0.03 285);
+  --on-ink: var(--paper-100);
+
+  /* ---- type ---- */
+  --font-display: "Bricolage Grotesque", "Georgia", serif;
+  --font-ui: "Instrument Sans", "Helvetica Neue", sans-serif;
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+  --w-bold: 700;
+  --w-black: 800;
+
+  --s-xs: 0.6875rem;   /* 11px micro */
+  --s-cap: 0.75rem;    /* 12px captions */
+  --s-sm: 0.8125rem;   /* 13px */
+  --s-base: 0.9375rem; /* 15px body */
+  --s-md: 1.0625rem;   /* 17px */
+  --s-lg: 1.375rem;    /* 22px section */
+  --s-xl: 1.875rem;    /* 30px screen title */
+  --s-xxl: 2.75rem;    /* 44px hero amount */
+
+  /* ---- radii: everything rounder than v1 ---- */
+  --r-sm: 14px;
+  --r-md: 20px;
+  --r-lg: 28px;
+  --r-xl: 36px;
+  --r-pill: 999px;
+
+  /* ---- space (4pt) ---- */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+
+  /* ---- motion ---- */
+  --t-fast: 150ms cubic-bezier(0.3, 0, 0.2, 1);
+  --t-med: 280ms cubic-bezier(0.3, 0, 0.2, 1);
+  --t-spring: 420ms cubic-bezier(0.34, 1.32, 0.64, 1);
+
+  /* ---- shadows: soft, warm, low ---- */
+  --shadow-card: 0 2px 4px oklch(0.19 0.028 285 / 0.05), 0 10px 28px oklch(0.19 0.028 285 / 0.07);
+  --shadow-float: 0 10px 34px oklch(0.19 0.028 285 / 0.22);
+
+  /* ---- organic blob radii (Reference uses blobs at screen tops) ---- */
+  --blob-a: 58% 42% 46% 54% / 62% 46% 54% 38%;
+  --blob-b: 42% 58% 55% 45% / 48% 62% 38% 52%;
+}
+
+/* ---- dark: the whole app flips to ink, cream becomes the accent ---- */
+[data-theme="dark"] {
+  --bg: var(--ink-900);
+  --surface: var(--ink-800);
+  --surface-raised: var(--ink-800);
+  --surface-sunken: oklch(0.16 0.025 285);
+  --fg: var(--paper-100);
+  --fg-2: oklch(0.78 0.015 85);
+  --fg-3: oklch(0.62 0.015 85);
+  --fg-inverse: var(--ink-900);
+  --fg-2-inverse: oklch(0.30 0.03 285);
+  --border: oklch(0.30 0.03 285);
+  --border-strong: oklch(0.38 0.03 285);
+  --accent: var(--peach);
+  --accent-deep: var(--peach);
+  --accent-soft: oklch(0.34 0.06 48);
+  --peach-soft: oklch(0.34 0.06 48);
+  --mint-soft: oklch(0.32 0.04 185);
+  --butter-soft: oklch(0.36 0.06 88);
+  --pos-soft: oklch(0.30 0.04 178);
+  --neg-soft: oklch(0.32 0.05 32);
+  --accent-2: var(--mint);
+  --accent-2-deep: var(--mint);
+  --accent-2-soft: oklch(0.32 0.04 185);
+  --highlight: var(--butter);
+  --highlight-soft: oklch(0.36 0.06 88);
+  --on-accent: oklch(0.22 0.03 285);
+  --on-ink: var(--paper-100);
+  --pos: oklch(0.76 0.08 178);
+  --pos-soft: oklch(0.30 0.04 178);
+  --neg: oklch(0.74 0.13 32);
+  --neg-soft: oklch(0.32 0.05 32);
+  --shadow-card: 0 1px 0 oklch(1 0 0 / 0.04), 0 10px 28px oklch(0 0 0 / 0.35);
+  --shadow-float: 0 12px 36px oklch(0 0 0 / 0.5);
+}
+
+/* semantic type aliases */
+:root {
+  --h1: var(--w-black) var(--s-xxl)/1.02 var(--font-display);
+  --h2: var(--w-bold) var(--s-xl)/1.08 var(--font-display);
+  --body: var(--w-regular) var(--s-base)/1.55 var(--font-ui);
+  --caption: var(--w-medium) var(--s-sm)/1.35 var(--font-ui);
+  --label: var(--w-semibold) var(--s-cap)/1.2 var(--font-ui);
+}
+
+/* money is always tabular */
+.money, .tnum { font-feature-settings: "tnum"; }

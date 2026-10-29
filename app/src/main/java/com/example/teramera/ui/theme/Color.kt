@@ -2,50 +2,59 @@ package com.example.teramera.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Light — warm cream surfaces (from opendesign/design-systems/teramera-product tokens)
-val Bg1 = Color(0xFFFBF9F4)
-val Bg2 = Color(0xFFF5F1E8)
-val Bg3 = Color(0xFFECE7DB)
-val Ink1 = Color(0xFF251C15)
-val Ink2 = Color(0xFF5B5046)
-val Ink3 = Color(0xFF877F75)
+// teramera-ink — ink canvas, cream paper, peach light.
+// Hex values are the exact sRGB conversions from
+// opendesign/design-systems/teramera-ink/tokens/colors_and_type.css
 
-val AccentTeal = Color(0xFF00848B) // accent-1, "mera" side
-val AccentTealSoft = Color(0xFFD2EEF0)
-val AccentViolet = Color(0xFF825EA9) // accent-2, "tere" side
-val AccentVioletSoft = Color(0xFFECE3F8)
+// Paper
+val Paper000 = Color(0xFFFFFDF8)
+val Paper100 = Color(0xFFFAF7F2)
+val Paper200 = Color(0xFFF4F0E7)
+val Paper300 = Color(0xFFEBE6DB)
 
-val PosGreen = Color(0xFF25855B)
-val PosSoft = Color(0xFFD8F3E3)
-val NegRed = Color(0xFFC44132)
-val NegSoft = Color(0xFFFFE4DC)
+// Ink
+val Ink900 = Color(0xFF121220)
+val Ink800 = Color(0xFF1B1B2B)
+val Ink700 = Color(0xFF27263A)
+val Ink500 = Color(0xFF505063)
+val Ink300 = Color(0xFF6D6D7A)
 
-val BorderSubtle = Color(0xFFE3DDD4)
-val BorderStrong = Color(0xFFCBC3B6)
+// Accents
+val Peach = Color(0xFFF1AB88)
+val PeachDeep = Color(0xFFDC855D)
+val PeachSoft = Color(0xFFFFE2CA)
+val Mint = Color(0xFF78C1B7)
+val MintDeep = Color(0xFF3F8980)
+val MintSoft = Color(0xFFCFF0EB)
+val Butter = Color(0xFFF2D48E)
+val ButterSoft = Color(0xFFFAEECD)
 
-// Dark — warm brown-black
-val DBg1 = Color(0xFF1E1711)
-val DBg2 = Color(0xFF29211A)
-val DBg3 = Color(0xFF352C23)
-val DInk1 = Color(0xFFEFECE7)
+// Status
+val Pos = Color(0xFF1B7D6C)
+val PosSoft = Color(0xFFD7F2EB)
+val Neg = Color(0xFFA52B1E)
+val NegSoft = Color(0xFFFFE1D9)
+
+// Borders
+val BorderSubtle = Paper300
+val BorderStrong = Color(0xFFD7D0C4)
+
+// Dark theme
 val DInk2 = Color(0xFFBCB6AF)
-val DInk3 = Color(0xFF8F8880)
+val DInk3 = Color(0xFF8A867C)
+val DBorderSubtle = Color(0xFF2C2C3C)
+val DBorderStrong = Color(0xFF404052)
 
-val DAccentTeal = Color(0xFF36BABA)
-val DAccentTealSoft = Color(0xFF083A3D)
-val DAccentViolet = Color(0xFFB093E5)
-val DAccentVioletSoft = Color(0xFF392C47)
+// Dark containers and status (accessible on ink)
+val DPeachContainer = Color(0xFF4A3529)
+val DMintContainer = Color(0xFF2B4A47)
+val DPos = Color(0xFF6FD3BF)
+val DPosSoft = Color(0xFF1E3B35)
+val DNeg = Color(0xFFFF9A86)
+val DNegSoft = Color(0xFF462622)
 
-val DPosGreen = Color(0xFF66C093)
-val DPosSoft = Color(0xFF13382A)
-val DNegRed = Color(0xFFED7665)
-val DNegSoft = Color(0xFF46271F)
+// Fixed cream for the mascot's face, ring and coin in both themes (never flips).
+val MascotCream = Paper100
 
-val DBorderSubtle = Color(0xFF352C23)
-
-// Fixed cream for the mascot's face and coin in both themes (never flips).
-val MascotCream = Color(0xFFFBF9F4)
-
-// Foreground for text/graphics on an accent fill.
-val OnAccentLight = Color(0xFFFBF9F4)
-val OnAccentDark = Color(0xFF1E1711)
+// Ink used for text/graphics on a peach or mint fill.
+val OnAccent = Ink900

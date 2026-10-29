@@ -1,23 +1,22 @@
 package com.example.teramera.ui.activity
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,18 +27,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.core.time.TimeFormat
+import com.example.teramera.ui.components.Baanto
+import com.example.teramera.ui.components.BaantoState
+import com.example.teramera.ui.components.CheckIcon
 import com.example.teramera.ui.components.EmptyState
+import com.example.teramera.ui.components.InkHeader
+import com.example.teramera.ui.components.PlusIcon
 import com.example.teramera.ui.home.formatInr
+import com.example.teramera.ui.theme.Ink900
 
 private enum class ActivityFilter(val label: String) { All("All"), Expenses("Expenses"), Settlements("Settlements") }
 
@@ -51,24 +55,26 @@ fun ActivityScreen(
     var filterIndex by remember { mutableIntStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            "Activity",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-        )
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 20.dp),
-        ) {
-            ActivityFilter.entries.forEachIndexed { index, filter ->
-                FilterChip(
-                    label = filter.label,
-                    selected = index == filterIndex,
-                    onClick = { filterIndex = index },
+        InkHeader {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "Activity",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    modifier = Modifier.weight(1f),
                 )
+                Baanto(state = BaantoState.Thinking, size = 40.dp, animate = true)
             }
         }
+
+        SegmentedTabs(
+            tabs = ActivityFilter.entries.map { it.label },
+            selectedIndex = filterIndex,
+            onSelect = { filterIndex = it },
+        )
 
         val filters = ActivityFilter.entries
         val filtered = when (filters[filterIndex]) {
@@ -77,7 +83,7 @@ fun ActivityScreen(
             ActivityFilter.Settlements -> state.events.filterIsInstance<ActivityEvent.SettlementMade>()
         }
 
-        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)) {
+        LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp)) {
             // Events arrive sorted newest-first; groupBy preserves encounter order per day.
             filtered.groupBy { TimeFormat.dayStart(it.createdAt) }.forEach { (day, events) ->
                 item(key = "day-$day") {
@@ -85,16 +91,20 @@ fun ActivityScreen(
                         TimeFormat.dayLabel(day),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 24.dp, top = 24.dp, bottom = 6.dp),
+                        modifier = Modifier.padding(start = 4.dp, top = 16.dp, bottom = 8.dp),
                     )
-                }
-                items(events, key = { it.id }) { event ->
-                    EventRow(event)
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        thickness = 1.dp,
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.large)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(horizontal = 16.dp),
+                    ) {
+                        events.forEachIndexed { index, event ->
+                            EventRow(event)
+                            if (index != events.lastIndex) Hairline()
+                        }
+                    }
                 }
             }
             if (filtered.isEmpty()) {
@@ -110,18 +120,38 @@ fun ActivityScreen(
 }
 
 @Composable
-private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val bg =
-        if (selected) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surfaceVariant
-    Box(
+private fun SegmentedTabs(tabs: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
+    Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 15.dp, vertical = 10.dp),
+            .padding(horizontal = 20.dp, vertical = 14.dp)
+            .fillMaxWidth()
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium)
+        tabs.forEachIndexed { index, label ->
+            val selected = index == selectedIndex
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 44.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.surface
+                        else androidx.compose.ui.graphics.Color.Transparent
+                    )
+                    .selectable(selected = selected, role = Role.Tab) { onSelect(index) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (selected) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -139,14 +169,17 @@ private fun ExpenseRow(event: ActivityEvent.ExpenseAdded) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 13.dp),
+            .padding(vertical = 13.dp),
     ) {
-        EventBadge(bgColor = MaterialTheme.colorScheme.primaryContainer, symbol = "+")
+        EventBadge(
+            bgColor = MaterialTheme.colorScheme.primaryContainer,
+            content = { PlusIcon(tint = Ink900, size = 18.dp) },
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             AnnotatedText(bold = event.payerName, rest = " added ${event.title}")
             Text(
-                "₹${formatInr(event.amountMinor)} · split among ${event.participantCount} · ${TimeFormat.time(event.createdAt)}",
+                "₹${formatInr(event.amountMinor)} · ${event.participantCount} people · ${TimeFormat.time(event.createdAt)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -170,9 +203,12 @@ private fun SettlementRow(event: ActivityEvent.SettlementMade) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 13.dp),
+            .padding(vertical = 13.dp),
     ) {
-        EventBadge(bgColor = MaterialTheme.colorScheme.tertiaryContainer, symbol = "✓")
+        EventBadge(
+            bgColor = MaterialTheme.colorScheme.secondaryContainer,
+            content = { CheckIcon(tint = Ink900, size = 18.dp) },
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             AnnotatedText(bold = event.payerName, rest = " settled up with ${event.payeeName}")
@@ -187,7 +223,10 @@ private fun SettlementRow(event: ActivityEvent.SettlementMade) {
 }
 
 @Composable
-private fun EventBadge(bgColor: androidx.compose.ui.graphics.Color, symbol: String) {
+private fun EventBadge(
+    bgColor: androidx.compose.ui.graphics.Color,
+    content: @Composable () -> Unit,
+) {
     Box(
         modifier = Modifier
             .size(40.dp)
@@ -195,7 +234,7 @@ private fun EventBadge(bgColor: androidx.compose.ui.graphics.Color, symbol: Stri
             .background(bgColor),
         contentAlignment = Alignment.Center,
     ) {
-        Text(symbol, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        content()
     }
 }
 
@@ -206,7 +245,16 @@ private fun AnnotatedText(bold: String, rest: String) {
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(bold) }
             append(rest)
         },
-        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp),
+        style = MaterialTheme.typography.bodyLarge,
     )
 }
 
+@Composable
+private fun Hairline() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+}
