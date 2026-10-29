@@ -406,6 +406,47 @@ app.post("/groups", async (c) => {
     return c.json({ id, name: body.name.trim(), currency: body.currency ?? "INR" });
 });
 
+/** Rename a group. Only the creator can manage group settings. */
+app.patch("/groups/:groupId", async (c) => {
+    const groupId = c.req.param("groupId");
+    const userId = c.get("userId");
+    await requireMember(c, groupId, userId);
+
+    const [group] = await rows<GroupRow>(c, "SELECT * FROM groups WHERE id = ?", groupId);
+    if (!group) return jsonError(c, 404, "Group not found");
+    if (group.created_by !== userId) return jsonError(c, 403, "Only the group creator can rename this group");
+
+    const body = await c.req.json<{ name?: string }>();
+    const name = body.name?.trim();
+    if (!name) return jsonError(c, 400, "name is required");
+    if (name.length > 80) return jsonError(c, 400, "Name must be 80 characters or fewer");
+
+    await run(c, "UPDATE groups SET name = ? WHERE id = ?", name, groupId);
+    return c.json({ id: groupId, name, currency: group.currency });
+});
+
+/** Delete a group and everything that belongs to it (creator only). */
+app.delete("/groups/:groupId", async (c) => {
+    const groupId = c.req.param("groupId");
+    const userId = c.get("userId");
+    await requireMember(c, groupId, userId);
+
+    const [group] = await rows<GroupRow>(c, "SELECT * FROM groups WHERE id = ?", groupId);
+    if (!group) return jsonError(c, 404, "Group not found");
+    if (group.created_by !== userId) return jsonError(c, 403, "Only the group creator can delete this group");
+
+    await c.env.DB.batch([
+        c.env.DB.prepare(
+            "DELETE FROM expense_shares WHERE expense_id IN (SELECT id FROM expenses WHERE group_id = ?)",
+        ).bind(groupId),
+        c.env.DB.prepare("DELETE FROM expenses WHERE group_id = ?").bind(groupId),
+        c.env.DB.prepare("DELETE FROM settlements WHERE group_id = ?").bind(groupId),
+        c.env.DB.prepare("DELETE FROM memberships WHERE group_id = ?").bind(groupId),
+        c.env.DB.prepare("DELETE FROM groups WHERE id = ?").bind(groupId),
+    ]);
+    return c.json({ status: "deleted", id: groupId });
+});
+
 /** Find a teramera user by email — how friends discover each other. */
 app.get("/users/find", async (c) => {
     const email = (c.req.query("email") ?? "").trim().toLowerCase();
@@ -621,10 +662,10 @@ async function groupBalances(c: any, groupId: string): Promise<{ userId: string;
 app.get("/groups/:groupId/detail", async (c) => {
     const groupId = c.req.param("groupId");
     const userId = c.get("userId");
-    await requireMember(c, groupId, userId);
 
     const [group] = await rows<GroupRow>(c, "SELECT * FROM groups WHERE id = ?", groupId);
     if (!group) return jsonError(c, 404, "Group not found");
+    await requireMember(c, groupId, userId);
 
     // batched: members+users in one join, all shares in one IN query
     const memberRows = await rows<Row>(
@@ -705,6 +746,7 @@ app.get("/groups/:groupId/detail", async (c) => {
         id: group.id,
         name: group.name,
         currency: group.currency,
+        createdBy: group.created_by,
         totalSpentMinor: expenses.reduce((acc, e) => acc + e.amount_minor, 0),
         members,
         expenses: expenseList,

@@ -35,6 +35,7 @@ data class GroupDetail(
     val expenses: List<ExpenseLine>,
     val simplifiedDebts: List<DebtTransfer>,
     val worstCasePayments: Int,
+    val isOwner: Boolean = false,
 )
 
 /**

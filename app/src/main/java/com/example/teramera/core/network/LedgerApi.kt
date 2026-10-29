@@ -19,6 +19,7 @@ data class GroupSummaryDto(
 
 data class CreateGroupRequestDto(val name: String, val currency: String?, val memberUserIds: List<String>?)
 data class CreateGroupResponseDto(val id: String, val name: String, val currency: String)
+data class UpdateGroupRequestDto(val name: String)
 
 data class CreateExpenseRequestDto(
     val groupId: String?,
@@ -98,6 +99,7 @@ data class GroupDetailDto(
     val id: String,
     val name: String,
     val currency: String,
+    val createdBy: String = "",
     val totalSpentMinor: Long,
     val members: List<MemberDto>,
     val expenses: List<GroupExpenseDto>,
@@ -134,6 +136,15 @@ interface LedgerApi {
 
     @POST("groups")
     suspend fun createGroup(@Body body: CreateGroupRequestDto): CreateGroupResponseDto
+
+    @PATCH("groups/{groupId}")
+    suspend fun updateGroup(
+        @Path("groupId") groupId: String,
+        @Body body: UpdateGroupRequestDto,
+    ): Map<String, String>
+
+    @DELETE("groups/{groupId}")
+    suspend fun deleteGroup(@Path("groupId") groupId: String): Map<String, String>
 
     @GET("balances")
     suspend fun friendBalances(): List<BalanceDto>

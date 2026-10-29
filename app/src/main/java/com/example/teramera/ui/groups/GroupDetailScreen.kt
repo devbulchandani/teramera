@@ -20,14 +20,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +52,7 @@ import com.example.teramera.ui.components.Baanto
 import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.components.HeaderIconButton
 import com.example.teramera.ui.components.InkHeader
+import com.example.teramera.ui.components.MoreIcon
 import com.example.teramera.ui.components.PlusIcon
 import com.example.teramera.ui.components.ShareIcon
 import com.example.teramera.ui.home.formatInr
@@ -64,6 +71,9 @@ fun GroupDetailScreen(
     val addMemberState by viewModel.addMemberState.collectAsStateWithLifecycle()
     val expenseEditState by viewModel.expenseEditState.collectAsStateWithLifecycle()
     val settleState by viewModel.settle.collectAsStateWithLifecycle()
+    val manageState by viewModel.manage.collectAsStateWithLifecycle()
+    var renameOpen by remember { mutableStateOf(false) }
+    var deleteOpen by remember { mutableStateOf(false) }
 
     // loading / error / empty states instead of a blank screen
     if (uiState.loading) {
@@ -140,6 +150,37 @@ fun GroupDetailScreen(
         )
     }
 
+    if (renameOpen) {
+        RenameGroupDialog(
+            currentName = d.groupName,
+            busy = manageState.busy,
+            error = manageState.error,
+            onDismiss = {
+                renameOpen = false
+                viewModel.clearManageError()
+            },
+            onRename = { name -> viewModel.renameGroup(name) { renameOpen = false } },
+        )
+    }
+
+    if (deleteOpen) {
+        DeleteGroupDialog(
+            groupName = d.groupName,
+            busy = manageState.busy,
+            error = manageState.error,
+            onDismiss = {
+                deleteOpen = false
+                viewModel.clearManageError()
+            },
+            onDelete = {
+                viewModel.deleteGroup {
+                    deleteOpen = false
+                    onBack()
+                }
+            },
+        )
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -157,6 +198,9 @@ fun GroupDetailScreen(
                     onBack = onBack,
                     onAddMember = viewModel::showAddMember,
                     onShare = { onShareGroup(d.groupName, d.groupId) },
+                    canManage = d.isOwner,
+                    onRename = { renameOpen = true },
+                    onDelete = { deleteOpen = true },
                 )
 
                 LazyColumn(
@@ -242,7 +286,11 @@ private fun GroupHeader(
     onBack: () -> Unit,
     onAddMember: () -> Unit,
     onShare: () -> Unit,
+    canManage: Boolean,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     InkHeader {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -258,6 +306,35 @@ private fun GroupHeader(
                 }
                 HeaderIconButton(contentDescription = "Add member", onClick = onAddMember) {
                     PlusIcon(tint = Paper100, size = 20.dp)
+                }
+                if (canManage) {
+                    Box {
+                        HeaderIconButton(
+                            contentDescription = "Manage group",
+                            onClick = { menuOpen = true },
+                        ) {
+                            MoreIcon(tint = Paper100, size = 20.dp)
+                        }
+                        DropdownMenu(
+                            expanded = menuOpen,
+                            onDismissRequest = { menuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Rename group") },
+                                onClick = {
+                                    menuOpen = false
+                                    onRename()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete group", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    menuOpen = false
+                                    onDelete()
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -638,6 +715,92 @@ private fun methodLabel(method: PaymentMethod): String = when (method) {
     PaymentMethod.UPI -> "UPI"
     PaymentMethod.CASH -> "Cash"
     PaymentMethod.BANK -> "Bank"
+}
+
+@Composable
+private fun RenameGroupDialog(
+    currentName: String,
+    busy: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit,
+) {
+    var name by remember(currentName) { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.large,
+        title = { Text("Rename group") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Group name") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank() && !busy,
+                onClick = { onRename(name) },
+            ) { Text(if (busy) "Saving…" else "Save", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun DeleteGroupDialog(
+    groupName: String,
+    busy: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.large,
+        title = { Text("Delete group?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "“$groupName” and all of its expenses will be removed for everyone. This can't be undone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy, onClick = onDelete) {
+                Text(
+                    if (busy) "Deleting…" else "Delete",
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable

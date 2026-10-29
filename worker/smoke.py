@@ -451,6 +451,20 @@ def run_checks():
     detail = call("GET", f"/groups/{gid}/detail")
     check("delete removed both sibling rows", len(detail["expenses"]) == 1, detail["expenses"])
 
+    # ---- manage group: rename + delete (creator only) ----
+    renamed = call("PATCH", f"/groups/{g2}", {"name": "Splits renamed"})
+    check("group rename returns new name", renamed["name"] == "Splits renamed", renamed)
+    renamed_detail = call("GET", f"/groups/{g2}/detail")
+    check("renamed group reflected in detail", renamed_detail["name"] == "Splits renamed", renamed_detail["name"])
+    call("PATCH", f"/groups/{g2}", {"name": "Not allowed"}, tok=B, expect=403)
+    check("non-owner cannot rename group", True)
+    call("DELETE", f"/groups/{g2}", tok=B, expect=403)
+    check("non-owner cannot delete group", True)
+    call("DELETE", f"/groups/{g2}")
+    call("GET", f"/groups/{g2}/detail", expect=404)
+    remaining = call("GET", "/groups")
+    check("deleted group disappears from group list", all(g["id"] != g2 for g in remaining), remaining)
+
     # ---- app version link is scheme-correct locally ----
     version = call("GET", "/app/version")
     check("version endpoint reachable without auth", version["versionCode"] >= 1, version)

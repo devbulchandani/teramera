@@ -204,3 +204,13 @@ fun PowerIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
         )
     }
 }
+
+@Composable
+fun MoreIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        drawCircle(tint, radius = 1.7f * s, center = Offset(12f * s, 5f * s))
+        drawCircle(tint, radius = 1.7f * s, center = Offset(12f * s, 12f * s))
+        drawCircle(tint, radius = 1.7f * s, center = Offset(12f * s, 19f * s))
+    }
+}

@@ -35,6 +35,11 @@ data class AddMemberState(
     val error: String? = null,
 )
 
+data class GroupManageState(
+    val busy: Boolean = false,
+    val error: String? = null,
+)
+
 data class GroupSettleState(
     val visible: Boolean = false,
     val transfer: DebtTransfer? = null,
@@ -94,10 +99,11 @@ class GroupDetailViewModel @Inject constructor(
             }
             try {
                 val d = ledgerApi.groupDetail(groupId)
+                val selfId = syncRepository.selfUserId().orEmpty()
                 remote.value = GroupDetail(
                     groupId = d.id,
                     groupName = d.name,
-                    selfUserId = syncRepository.selfUserId().orEmpty(),
+                    selfUserId = selfId,
                     memberInitials = d.members.map { initialsOfName(it.name) to it.isSelf },
                     memberIds = d.members.map { it.id },
                     totalSpentMinor = d.totalSpentMinor,
@@ -123,6 +129,7 @@ class GroupDetailViewModel @Inject constructor(
                         )
                     },
                     worstCasePayments = d.worstCasePayments,
+                    isOwner = d.createdBy.isNotEmpty() && d.createdBy == selfId,
                 )
             } catch (e: retrofit2.HttpException) {
                 remoteError.value = when (e.code()) {
@@ -189,6 +196,50 @@ class GroupDetailViewModel @Inject constructor(
         }
     }
 
+    // ---- manage group (rename / delete) ----
+
+    private val manageState = MutableStateFlow(GroupManageState())
+    val manage: StateFlow<GroupManageState> = manageState
+
+    fun clearManageError() {
+        manageState.value = manageState.value.copy(error = null)
+    }
+
+    fun renameGroup(name: String, onDone: () -> Unit) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || manageState.value.busy) return
+        viewModelScope.launch {
+            manageState.value = GroupManageState(busy = true)
+            try {
+                ledgerApi.updateGroup(
+                    groupId,
+                    com.example.teramera.core.network.UpdateGroupRequestDto(trimmed),
+                )
+                manageState.value = GroupManageState()
+                syncRepository.refreshNow()
+                refresh()
+                onDone()
+            } catch (e: Exception) {
+                manageState.value = GroupManageState(error = e.message ?: "Couldn't rename group")
+            }
+        }
+    }
+
+    fun deleteGroup(onDone: () -> Unit) {
+        if (manageState.value.busy) return
+        viewModelScope.launch {
+            manageState.value = GroupManageState(busy = true)
+            try {
+                ledgerApi.deleteGroup(groupId)
+                manageState.value = GroupManageState()
+                syncRepository.refreshNow()
+                onDone()
+            } catch (e: Exception) {
+                manageState.value = GroupManageState(error = e.message ?: "Couldn't delete group")
+            }
+        }
+    }
+
     // ---- add member ----
 
     fun showAddMember() {
@@ -247,6 +298,7 @@ class GroupDetailViewModel @Inject constructor(
             try {
                 ledgerApi.addMember(groupId, com.example.teramera.core.network.AddMemberRequestDto(userId))
                 addMember.value = AddMemberState()
+                syncRepository.refreshNow()
                 refresh()
             } catch (e: Exception) {
                 addMember.value = addMember.value.copy(searching = false, error = e.message ?: "Couldn't add")
@@ -293,6 +345,7 @@ class GroupDetailViewModel @Inject constructor(
                     ),
                 )
                 expenseEdit.value = ExpenseEditState()
+                syncRepository.refreshNow()
                 refresh()
             } catch (e: Exception) {
                 expenseEdit.value =
@@ -309,6 +362,7 @@ class GroupDetailViewModel @Inject constructor(
             try {
                 ledgerApi.deleteExpense(line.id)
                 expenseEdit.value = ExpenseEditState()
+                syncRepository.refreshNow()
                 refresh()
             } catch (e: Exception) {
                 expenseEdit.value =

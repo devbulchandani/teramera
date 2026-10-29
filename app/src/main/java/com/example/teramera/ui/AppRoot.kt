@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,6 +47,7 @@ import com.example.teramera.ui.theme.Paper100
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -166,6 +168,11 @@ class SessionViewModel @Inject constructor(
         }
     }
 
+    /** Foreground poll — pulls server changes without re-registering push. */
+    fun syncNow() {
+        viewModelScope.launch { syncRepository.refreshNow() }
+    }
+
     /** Silent update check that runs even before sign-in. */
     fun checkForUpdate() {
         viewModelScope.launch {
@@ -213,8 +220,19 @@ private fun MainApp(
     darkTheme: Boolean,
     onToggleTheme: () -> Unit,
 ) {
-    // refresh server state on every entry into the app + check for updates
-    androidx.compose.runtime.LaunchedEffect(Unit) { sessionViewModel.refresh() }
+    // Refresh on every resume and keep polling while the app is in front. This
+    // is what makes another device's expense/settlement show up without a restart.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            var first = true
+            while (true) {
+                if (first) sessionViewModel.refresh() else sessionViewModel.syncNow()
+                first = false
+                kotlinx.coroutines.delay(25_000)
+            }
+        }
+    }
 
     val navController = rememberNavController()
 
@@ -285,7 +303,6 @@ private fun MainApp(
                 FloatingNav(
                     items = navItems,
                     isSelected = { isSelected(it) },
-                    showAdd = currentRoute == Routes.HOME || currentRoute == Routes.GROUPS,
                     onSelect = { route ->
                         navController.navigate(route) {
                             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -293,12 +310,24 @@ private fun MainApp(
                             restoreState = true
                         }
                     },
-                    onAdd = {
+                )
+            }
+        },
+        floatingActionButton = {
+            if (!onGroupDetail && (currentRoute == Routes.HOME || currentRoute == Routes.GROUPS)) {
+                FloatingActionButton(
+                    onClick = {
                         // a group picked by an earlier group-screen add must not leak in
                         addExpenseGroupId = null
                         showAddExpense = true
                     },
-                )
+                    containerColor = Paper000,
+                    contentColor = Ink900,
+                    shape = CircleShape,
+                    modifier = Modifier.semantics { contentDescription = "Add expense" },
+                ) {
+                    PlusIcon(tint = Ink900, size = 24.dp)
+                }
             }
         },
     ) { innerPadding ->
@@ -364,70 +393,53 @@ private fun MainApp(
 private fun FloatingNav(
     items: List<NavItem>,
     isSelected: (String) -> Boolean,
-    showAdd: Boolean,
     onSelect: (String) -> Unit,
-    onAdd: () -> Unit,
 ) {
     val inactive = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.78f)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 18.dp)
-            .height(96.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Row(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .height(64.dp)
                 .shadow(18.dp, CircleShape)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.inverseSurface)
-                .heightIn(min = 64.dp)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEach { item ->
                 val selected = isSelected(item.route)
-                Column(
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 44.dp)
+                        .fillMaxHeight()
                         .clip(CircleShape)
                         .selectable(
                             selected = selected,
                             role = Role.Tab,
                             onClick = { onSelect(item.route) },
-                        )
-                        .padding(vertical = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    item.icon(if (selected) MaterialTheme.colorScheme.primary else inactive)
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        item.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (selected) MaterialTheme.colorScheme.primary else inactive,
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        item.icon(if (selected) MaterialTheme.colorScheme.primary else inactive)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            item.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) MaterialTheme.colorScheme.primary else inactive,
+                            maxLines = 1,
+                        )
+                    }
                 }
-            }
-        }
-        if (showAdd) {
-            FloatingActionButton(
-                onClick = onAdd,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 6.dp)
-                    .size(56.dp)
-                    .shadow(14.dp, CircleShape)
-                    .semantics { contentDescription = "Add expense" },
-                shape = CircleShape,
-                containerColor = Paper000,
-                contentColor = Ink900,
-            ) {
-                PlusIcon(tint = Ink900, size = 24.dp)
             }
         }
     }

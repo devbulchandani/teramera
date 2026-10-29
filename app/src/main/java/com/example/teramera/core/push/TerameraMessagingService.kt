@@ -21,6 +21,8 @@ class TerameraMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var tokenUploader: DeviceTokenUploader
 
+    @Inject lateinit var syncRepository: com.example.teramera.data.sync.SyncRepository
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
@@ -28,6 +30,9 @@ class TerameraMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        // A push means another device wrote to the ledger — refresh the local DB
+        // so home/groups/activity are already correct when the user opens them.
+        scope.launch { syncRepository.refreshNow() }
         val title = message.notification?.title ?: message.data["title"] ?: "teramera"
         val body = message.notification?.body ?: message.data["body"] ?: ""
         showNotification(title, body)
