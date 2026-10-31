@@ -248,6 +248,16 @@ def run_checks():
     check("me reports total spent", me.get("totalSpentMinor") == 6000, me)
     check("me reports expense count", me.get("expenseCount") == 1, me)
 
+    spend = call("GET", "/spend")
+    check("spend total matches paid amount", spend.get("totalSpentMinor") == 6000, spend)
+    check("spend this month matches", spend.get("thisMonthSpentMinor") == 6000, spend)
+    check("spend reports one expense", spend.get("totalExpenseCount") == 1, spend)
+    check(
+        "spend month breakdown present",
+        any(m.get("spentMinor") == 6000 for m in spend.get("months", [])),
+        spend.get("months"),
+    )
+
     groups = call("GET", "/groups")
     check("group summary total", groups[0]["totalSpentMinor"] == 10000, groups)
     check("group summary net", groups[0]["netForMeMinor"] == 1000, groups)

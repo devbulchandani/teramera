@@ -2,12 +2,14 @@ package com.example.teramera.ui.activity
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.teramera.core.stats.SpendSnapshot
+import com.example.teramera.core.stats.SpendStore
 import com.example.teramera.data.local.TerameraDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -40,19 +42,19 @@ sealed class ActivityEvent {
 
 data class ActivityUiState(
     val events: List<ActivityEvent> = emptyList(),
+    val spend: SpendSnapshot? = null,
 )
 
 @HiltViewModel
 class ActivityViewModel @Inject constructor(
     dao: TerameraDao,
+    spendStore: SpendStore,
 ) : ViewModel() {
 
-    // Plain map → only re-emits when *this* table changes (was previously also
-    // observing selfUser, which fired on every sync, causing extra recompositions).
     val uiState: StateFlow<ActivityUiState> =
-        dao.syncedActivity().map { events ->
+        combine(dao.syncedActivity(), spendStore.snapshot) { events, spend ->
             ActivityUiState(
-                events.map { row ->
+                events = events.map { row ->
                     if (row.type == "settlement") {
                         ActivityEvent.SettlementMade(
                             id = "s${row.id}",
@@ -77,6 +79,7 @@ class ActivityViewModel @Inject constructor(
                         )
                     }
                 },
+                spend = spend,
             )
         }
             .flowOn(kotlinx.coroutines.Dispatchers.Default)

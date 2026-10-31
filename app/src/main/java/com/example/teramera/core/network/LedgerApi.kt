@@ -91,6 +91,23 @@ data class ActivityEventDto(
     val createdAt: Long = 0,
 )
 
+data class SpendMonthDto(
+    val month: String,
+    val spentMinor: Long,
+    val expenseCount: Int,
+)
+
+data class SpendStatsDto(
+    val totalSpentMinor: Long,
+    val totalExpenseCount: Int,
+    val thisMonthKey: String,
+    val thisMonthSpentMinor: Long,
+    val thisMonthExpenseCount: Int,
+    val lastMonthSpentMinor: Long,
+    val lastMonthExpenseCount: Int,
+    val months: List<SpendMonthDto> = emptyList(),
+)
+
 data class DeviceTokenRequestDto(val token: String)
 data class UpdateExpenseRequestDto(
     val title: String? = null,
@@ -215,6 +232,9 @@ interface LedgerApi {
 
     @GET("groups/{groupId}/detail")
     suspend fun groupDetail(@Path("groupId") groupId: String): GroupDetailDto
+
+    @GET("spend")
+    suspend fun spendStats(): SpendStatsDto
 
     @GET("app/version")
     suspend fun appVersion(): AppVersionDto

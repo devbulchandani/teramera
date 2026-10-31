@@ -152,9 +152,14 @@ fun HomeContent(
             netMinor = state.netMinor,
             owedToYouMinor = state.owedToYouMinor,
             youOweMinor = state.youOweMinor,
-            spentMinor = state.selfSpentMinor,
-            expenseCount = state.selfExpenseCount,
             lastSyncAt = state.lastSyncAt,
+        )
+        SpendSummaryCard(
+            thisMonthMinor = state.thisMonthSpentMinor,
+            thisMonthCount = state.thisMonthExpenseCount,
+            lastMonthMinor = state.lastMonthSpentMinor,
+            totalMinor = state.selfSpentMinor,
+            months = state.spendMonths,
         )
         SegmentedTabs(
             tabs = HomeTab.entries.map { it.label },
@@ -330,8 +335,6 @@ private fun HeroCard(
     netMinor: Long,
     owedToYouMinor: Long,
     youOweMinor: Long,
-    spentMinor: Long,
-    expenseCount: Int,
     lastSyncAt: Long?,
 ) {
     val ink = MaterialTheme.colorScheme.inverseSurface
@@ -398,23 +401,6 @@ private fun HeroCard(
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    "You've spent ₹${formatInr(spentMinor)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = cream.copy(alpha = 0.78f),
-                )
-                Text(
-                    "$expenseCount ${if (expenseCount == 1) "expense" else "expenses"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = cream.copy(alpha = 0.55f),
-                )
-            }
             if (lastSyncAt != null) {
                 Text(
                     "Updated ${com.example.teramera.core.time.TimeFormat.relative(lastSyncAt)}",
@@ -425,6 +411,118 @@ private fun HeroCard(
             }
         }
     }
+}
+
+@Composable
+private fun SpendSummaryCard(
+    thisMonthMinor: Long,
+    thisMonthCount: Int,
+    lastMonthMinor: Long,
+    totalMinor: Long,
+    months: List<com.example.teramera.core.stats.MonthSpend>,
+) {
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 20.dp)
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "This month",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        "₹",
+                        style = MaterialTheme.typography.displayMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        formatInr(thisMonthMinor),
+                        style = MaterialTheme.typography.displayMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                Text(
+                    "$thisMonthCount ${if (thisMonthCount == 1) "expense" else "expenses"} · " +
+                        "₹${formatInr(totalMinor)} all time",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            if (months.isNotEmpty()) {
+                SpendBars(
+                    months = months,
+                    modifier = Modifier
+                        .width(112.dp)
+                        .height(52.dp),
+                )
+            }
+        }
+        if (lastMonthMinor > 0) {
+            Text(
+                "vs ₹${formatInr(lastMonthMinor)} last month",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SpendBars(
+    months: List<com.example.teramera.core.stats.MonthSpend>,
+    modifier: Modifier = Modifier,
+) {
+    val recent = months.take(6).reversed()
+    val max = recent.maxOfOrNull { it.spentMinor }?.coerceAtLeast(1L) ?: 1L
+    val currentKey = months.firstOrNull()?.month
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        recent.forEach { month ->
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier.height(34.dp),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(12.dp)
+                            .height((34f * (month.spentMinor.toFloat() / max)).coerceAtLeast(3f).dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                if (month.month == currentKey) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                    )
+                }
+                Text(
+                    monthShort(month.month),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private val MONTH_SHORT = arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+private fun monthShort(key: String): String {
+    val month = key.substringAfter('-').toIntOrNull() ?: return ""
+    return MONTH_SHORT.getOrElse(month - 1) { "" }
 }
 
 @Composable

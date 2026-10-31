@@ -386,6 +386,60 @@ app.patch("/me", async (c) => {
     return c.json({ id: user.id, phone: user.phone ?? "", email: user.email ?? "", name: user.name ?? "", upiId: user.upi_id ?? "" });
 });
 
+// ---------- spend tracking ----------
+
+/** All-time + month-by-month spend for the signed-in user. */
+app.get("/spend", async (c) => {
+    const userId = c.get("userId");
+    const [totals] = await rows<Row>(
+        c,
+        `SELECT COALESCE(SUM(amount_minor), 0) AS total,
+                COUNT(DISTINCT COALESCE(parent_id, id)) AS count
+           FROM expenses WHERE paid_by_user_id = ?`,
+        userId,
+    );
+    const monthRows = await rows<Row>(
+        c,
+        `SELECT strftime('%Y-%m', created_at / 1000, 'unixepoch') AS month,
+                SUM(amount_minor) AS total,
+                COUNT(DISTINCT COALESCE(parent_id, id)) AS count
+           FROM expenses
+          WHERE paid_by_user_id = ?
+          GROUP BY month
+          ORDER BY month DESC
+          LIMIT 12`,
+        userId,
+    );
+    const monthKey = (d: Date) =>
+        `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const now = new Date();
+    const thisKey = monthKey(now);
+    const lastKey = monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)));
+    const byMonth = new Map(monthRows.map((r) => [r.month, r]));
+    const thisMonth = byMonth.get(thisKey);
+    const lastMonth = byMonth.get(lastKey);
+
+    const months = monthRows.map((r) => ({
+        month: r.month,
+        spentMinor: Number(r.total),
+        expenseCount: Number(r.count),
+    }));
+    if (!byMonth.has(thisKey)) {
+        months.unshift({ month: thisKey, spentMinor: 0, expenseCount: 0 });
+    }
+
+    return c.json({
+        totalSpentMinor: Number(totals?.total ?? 0),
+        totalExpenseCount: Number(totals?.count ?? 0),
+        thisMonthKey: thisKey,
+        thisMonthSpentMinor: Number(thisMonth?.total ?? 0),
+        thisMonthExpenseCount: Number(thisMonth?.count ?? 0),
+        lastMonthSpentMinor: Number(lastMonth?.total ?? 0),
+        lastMonthExpenseCount: Number(lastMonth?.count ?? 0),
+        months,
+    });
+});
+
 // ---------- groups ----------
 
 interface GroupRow {

@@ -1,6 +1,7 @@
 package com.example.teramera.ui.activity
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +38,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.teramera.core.stats.MonthSpend
+import com.example.teramera.core.stats.SpendSnapshot
 import com.example.teramera.core.time.TimeFormat
 import com.example.teramera.ui.components.Baanto
 import com.example.teramera.ui.components.BaantoState
@@ -84,6 +89,11 @@ fun ActivityScreen(
         }
 
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp)) {
+            state.spend?.let { spend ->
+                if (spend.months.isNotEmpty()) {
+                    item(key = "spend-overview") { SpendByMonthCard(spend) }
+                }
+            }
             // Events arrive sorted newest-first; groupBy preserves encounter order per day.
             filtered.groupBy { TimeFormat.dayStart(it.createdAt) }.forEach { (day, events) ->
                 item(key = "day-$day") {
@@ -117,6 +127,85 @@ fun ActivityScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SpendByMonthCard(spend: SpendSnapshot) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(16.dp),
+    ) {
+        Text("Spend by month", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "This month ₹${formatInr(spend.thisMonthSpentMinor)} till now · " +
+                "${spend.thisMonthExpenseCount} ${if (spend.thisMonthExpenseCount == 1) "expense" else "expenses"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(spend.months, key = { it.month }) { month ->
+                val current = month.month == spend.thisMonthKey
+                Column(
+                    modifier = Modifier
+                        .width(124.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(
+                            if (current) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        .then(
+                            if (current) {
+                                Modifier.border(
+                                    1.5.dp,
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.shapes.medium,
+                                )
+                            } else Modifier
+                        )
+                        .padding(12.dp),
+                ) {
+                    Text(
+                        if (current) "This month" else monthName(month),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (current) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "₹${formatInr(month.spentMinor)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    Text(
+                        "${month.expenseCount} ${if (month.expenseCount == 1) "expense" else "expenses"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (current) {
+                        Text(
+                            "till now",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val MONTH_NAMES = arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+private fun monthName(month: MonthSpend): String {
+    val parts = month.month.split("-")
+    val year = parts.getOrNull(0).orEmpty()
+    val index = parts.getOrNull(1)?.toIntOrNull()?.minus(1) ?: return month.month
+    return "${MONTH_NAMES.getOrElse(index) { month.month }} $year"
 }
 
 @Composable

@@ -14,6 +14,7 @@ import javax.inject.Singleton
 class AuthRepository @Inject constructor(
     private val authApi: AuthApi,
     private val tokenStore: TokenStore,
+    private val spendStore: com.example.teramera.core.stats.SpendStore,
     private val dao: com.example.teramera.data.local.TerameraDao,
 ) {
 
@@ -26,6 +27,7 @@ class AuthRepository @Inject constructor(
             // Signing in as someone else must not surface the previous account's
             // cached balances/groups/activity while the first sync is in flight.
             dao.clearAccountData()
+            spendStore.clear()
             tokenStore.save(
                 AuthTokens(tokens.accessToken, tokens.refreshToken, tokens.userId),
                 avatarUrl = avatarUrl,
@@ -46,6 +48,7 @@ class AuthRepository @Inject constructor(
             runCatching { authApi.logout(LogoutRequestDto(tokens.refreshToken)) }
         }
         tokenStore.clear()
+        spendStore.clear()
         dao.clearAccountData()
     }
 }

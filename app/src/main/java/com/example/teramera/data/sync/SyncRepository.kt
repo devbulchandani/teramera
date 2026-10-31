@@ -8,6 +8,9 @@ import com.example.teramera.core.network.userMessage
 import com.example.teramera.data.local.SyncedActivityEntity
 import com.example.teramera.data.local.SyncedBalanceEntity
 import com.example.teramera.data.local.SyncedGroupEntity
+import com.example.teramera.core.stats.MonthSpend
+import com.example.teramera.core.stats.SpendSnapshot
+import com.example.teramera.core.stats.SpendStore
 import com.example.teramera.data.local.TerameraDao
 import kotlinx.coroutines.async
 import javax.inject.Inject
@@ -19,6 +22,7 @@ class SyncRepository @Inject constructor(
     private val ledgerApi: LedgerApi,
     private val dao: TerameraDao,
     private val tokenStore: TokenStore,
+    private val spendStore: SpendStore,
 ) {
     sealed interface Result {
         data object Success : Result
@@ -63,6 +67,7 @@ class SyncRepository @Inject constructor(
             val balancesDeferred = async { runCatching { ledgerApi.friendBalances() }.getOrNull() }
             val groupsDeferred = async { runCatching { ledgerApi.myGroups() }.getOrNull() }
             val activityDeferred = async { runCatching { ledgerApi.activity() }.getOrNull() }
+            val spendDeferred = async { runCatching { ledgerApi.spendStats() }.getOrNull() }
 
             meDeferred.await()?.let { me ->
                 meLoaded = true
@@ -103,6 +108,23 @@ class SyncRepository @Inject constructor(
                         updatedAt = now,
                     )
                 })
+            }
+
+            spendDeferred.await()?.let { spend ->
+                spendStore.save(
+                    SpendSnapshot(
+                        totalSpentMinor = spend.totalSpentMinor,
+                        totalExpenseCount = spend.totalExpenseCount,
+                        thisMonthKey = spend.thisMonthKey,
+                        thisMonthSpentMinor = spend.thisMonthSpentMinor,
+                        thisMonthExpenseCount = spend.thisMonthExpenseCount,
+                        lastMonthSpentMinor = spend.lastMonthSpentMinor,
+                        lastMonthExpenseCount = spend.lastMonthExpenseCount,
+                        months = spend.months.map {
+                            MonthSpend(it.month, it.spentMinor, it.expenseCount)
+                        },
+                    )
+                )
             }
 
             activityDeferred.await()?.let { activity ->

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teramera.BuildConfig
 import com.example.teramera.core.network.TokenStore
+import com.example.teramera.core.stats.MonthSpend
+import com.example.teramera.core.stats.SpendStore
 import com.example.teramera.core.update.AppUpdateManager
 import com.example.teramera.core.update.UpdateInfo
 import com.example.teramera.data.repository.BalanceEntry
@@ -28,6 +30,10 @@ data class HomeUiState(
     val selfPhotoUrl: String? = null,
     val selfSpentMinor: Long = 0,
     val selfExpenseCount: Int = 0,
+    val thisMonthSpentMinor: Long = 0,
+    val thisMonthExpenseCount: Int = 0,
+    val lastMonthSpentMinor: Long = 0,
+    val spendMonths: List<MonthSpend> = emptyList(),
     val profileSaved: Boolean = false,
     val lastSyncAt: Long? = null,
 ) {
@@ -50,6 +56,7 @@ class HomeViewModel @Inject constructor(
     private val syncRepository: SyncRepository,
     private val updateManager: AppUpdateManager,
     private val tokenStore: TokenStore,
+    private val spendStore: SpendStore,
 ) : ViewModel() {
 
     private val profileStatus = MutableStateFlow(false)
@@ -98,11 +105,16 @@ class HomeViewModel @Inject constructor(
             },
             tokenStore.avatarUrl,
             tokenStore.stats,
-        ) { state, avatarUrl, stats ->
+            spendStore.snapshot,
+        ) { state, avatarUrl, stats, spend ->
             state.copy(
                 selfPhotoUrl = avatarUrl,
-                selfSpentMinor = stats?.totalSpentMinor ?: 0L,
-                selfExpenseCount = stats?.expenseCount ?: 0,
+                selfSpentMinor = spend?.totalSpentMinor ?: stats?.totalSpentMinor ?: 0L,
+                selfExpenseCount = spend?.totalExpenseCount ?: stats?.expenseCount ?: 0,
+                thisMonthSpentMinor = spend?.thisMonthSpentMinor ?: 0L,
+                thisMonthExpenseCount = spend?.thisMonthExpenseCount ?: 0,
+                lastMonthSpentMinor = spend?.lastMonthSpentMinor ?: 0L,
+                spendMonths = spend?.months ?: emptyList(),
             )
         }
             .flowOn(kotlinx.coroutines.Dispatchers.Default)
