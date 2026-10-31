@@ -104,6 +104,13 @@ fun GroupDetailScreen(
             Text("Loading group…", style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (slowLoading) {
+                Text(
+                    "Still loading. Your connection or local cache may be stuck.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 4.dp),
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = viewModel::refresh) { Text("Retry") }
                     TextButton(onClick = onBack) { Text("Back to groups") }

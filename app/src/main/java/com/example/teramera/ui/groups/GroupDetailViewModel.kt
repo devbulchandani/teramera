@@ -3,6 +3,7 @@ package com.example.teramera.ui.groups
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.FlowPreview
 import com.example.teramera.data.local.PaymentMethod
 import com.example.teramera.data.repository.DebtTransfer
 import com.example.teramera.data.repository.GroupDetail
@@ -17,11 +18,14 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.timeout
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.seconds
 import javax.inject.Inject
 
 data class GroupDetailUiState(
@@ -57,10 +61,11 @@ data class GroupSettleState(
     val error: String? = null,
 )
 
+@OptIn(FlowPreview::class)
 @HiltViewModel
 class GroupDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    repository: GroupDetailRepository,
+    private val repository: GroupDetailRepository,
     private val ledgerApi: LedgerApi,
     private val syncRepository: SyncRepository,
 ) : ViewModel() {
@@ -70,9 +75,15 @@ class GroupDetailViewModel @Inject constructor(
     private val remoteError = MutableStateFlow<String?>(null)
     private val loadingRemote = MutableStateFlow(true)
     private val addMember = MutableStateFlow(AddMemberState())
+    private val localDetail = MutableStateFlow<GroupDetail?>(null)
 
     val detail: StateFlow<GroupDetailUiState> =
-        combine(remote, repository.groupDetail(groupId), remoteError, loadingRemote) { r, local, error, loading ->
+        combine(
+            remote,
+            localDetail,
+            remoteError,
+            loadingRemote,
+        ) { r, local, error, loading ->
             when {
                 r != null -> GroupDetailUiState(loading = false, detail = r)
                 // local cache has this group (offline-created) — show it, refresh quietly
@@ -91,6 +102,14 @@ class GroupDetailViewModel @Inject constructor(
 
     init {
         refresh()
+        // Local cache is a bonus, never a gate. If Room is slow or wedged, the
+        // remote result below still reaches the screen.
+        viewModelScope.launch {
+            repository.groupDetail(groupId)
+                .timeout(5.seconds)
+                .catch { /* remote state is enough */ }
+                .collect { localDetail.value = it }
+        }
         // re-fetch whenever any sync completes (expense added, settle, etc.)
         viewModelScope.launch {
             syncRepository.dataVersion.drop(1).collect { refresh() }
@@ -113,7 +132,7 @@ class GroupDetailViewModel @Inject constructor(
                     }
                     return@launch
                 }
-                val d = withTimeoutOrNull(25_000) { ledgerApi.groupDetail(groupId) }
+                val d = withTimeoutOrNull(12_000) { ledgerApi.groupDetail(groupId) }
                 if (d == null) {
                     remoteError.value = "Loading timed out. Check your connection and try again."
                     return@launch

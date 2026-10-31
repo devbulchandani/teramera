@@ -67,7 +67,7 @@ class GroupsViewModel @Inject constructor(
         if (refreshState.value.refreshing) return
         viewModelScope.launch {
             refreshState.value = RefreshState(refreshing = true, loaded = refreshState.value.loaded)
-            val result = withTimeoutOrNull(25_000) { syncRepository.refreshNow() }
+            val result = withTimeoutOrNull(15_000) { syncRepository.refreshNow() }
             refreshState.value = RefreshState(
                 refreshing = false,
                 loaded = true,
