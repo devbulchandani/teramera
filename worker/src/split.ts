@@ -18,7 +18,7 @@ export type SplitResult =
 
 export function computeSplit(input: SplitInput): SplitResult {
     const people = [...new Set(input.participants)];
-    if (people.length < 2) return { ok: false, reason: "At least two people required" };
+    if (people.length < 1) return { ok: false, reason: "At least one person is required" };
     if (!Number.isSafeInteger(input.totalMinor) || input.totalMinor <= 0) {
         return { ok: false, reason: "Amount must be a positive whole number of paise" };
     }

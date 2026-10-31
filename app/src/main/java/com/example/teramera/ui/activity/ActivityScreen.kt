@@ -270,7 +270,8 @@ private fun ExpenseRow(event: ActivityEvent.ExpenseAdded) {
         Column(Modifier.weight(1f)) {
             AnnotatedText(bold = event.payerName, rest = " added ${event.title}")
             Text(
-                "₹${formatInr(event.amountMinor)} · ${event.participantCount} people · ${TimeFormat.time(event.createdAt)}",
+                "₹${formatInr(event.amountMinor)} · ${event.participantCount} " +
+                    "${if (event.participantCount == 1) "person" else "people"} · ${TimeFormat.time(event.createdAt)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

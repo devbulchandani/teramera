@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +49,15 @@ fun GroupsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showCreate by remember { mutableStateOf(false) }
+    var slowLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(state.refreshing) {
+        if (state.refreshing) {
+            kotlinx.coroutines.delay(8_000)
+            slowLoading = true
+        } else {
+            slowLoading = false
+        }
+    }
     val net = state.groups.sumOf { it.amountMinor }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -107,7 +117,7 @@ fun GroupsScreen(
             if (state.groups.isEmpty()) {
                 item {
                     if (state.refreshing && !state.loaded) {
-                        LoadingGroups()
+                        LoadingGroups(onRetry = viewModel::refresh, showRetry = slowLoading)
                     } else {
                         EmptyState(
                             title = "No groups yet",
@@ -140,7 +150,7 @@ fun GroupsScreen(
 }
 
 @Composable
-private fun LoadingGroups() {
+private fun LoadingGroups(onRetry: () -> Unit, showRetry: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -154,6 +164,9 @@ private fun LoadingGroups() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 12.dp),
         )
+        if (showRetry) {
+            TextButton(onClick = onRetry) { Text("Taking too long? Retry") }
+        }
     }
 }
 

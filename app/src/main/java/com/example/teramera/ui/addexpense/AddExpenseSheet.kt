@@ -215,7 +215,8 @@ private fun SheetHeader(
             }
             val people = if (state.serverMode) state.draft.includedServer.size else state.draft.included.size
             Text(
-                "Equal split by default · ${people.coerceAtLeast(2)} people",
+                "Equal split by default · ${people.coerceAtLeast(1)} " +
+                    "${if (people.coerceAtLeast(1) == 1) "person" else "people"}",
                 style = MaterialTheme.typography.bodySmall,
                 color = cream.copy(alpha = 0.72f),
             )
@@ -780,7 +781,11 @@ private fun ColumnScope.ReviewStep(state: AddExpenseUiState, viewModel: AddExpen
                     Spacer(Modifier.width(14.dp))
                     Column {
                         Text(
-                            "Splitting ${groupName ?: "no group"} · ${splitLabel(state.draft.splitType)}",
+                            if (shares.orEmpty().size == 1) {
+                                "Personal expense${groupName?.let { " · $it" } ?: ""}"
+                            } else {
+                                "Splitting ${groupName ?: "no group"} · ${splitLabel(state.draft.splitType)}"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -848,7 +853,13 @@ private fun ColumnScope.ReviewStep(state: AddExpenseUiState, viewModel: AddExpen
         }
 
         PrimaryButton(
-            label = if (state.saving) "Saving…" else "Split ₹${formatInr(total)}",
+            label = if (state.saving) {
+                "Saving…"
+            } else if (shares.orEmpty().size == 1) {
+                "Save ₹${formatInr(total)}"
+            } else {
+                "Split ₹${formatInr(total)}"
+            },
             enabled = !state.saving && state.draft.title.isNotBlank() && total > 0 &&
                 (if (state.serverMode) serverSharesValid(state, viewModel) else sharesValid(state, viewModel)),
             onClick = { viewModel.save(onDone = onSaved) },
@@ -894,7 +905,8 @@ private fun sharesValid(state: AddExpenseUiState, viewModel: AddExpenseViewModel
         viewModel.previewShares(state) != null
 
 private fun serverSharesValid(state: AddExpenseUiState, viewModel: AddExpenseViewModel): Boolean =
-    state.draft.includedServer.size >= 2 &&
+    state.draft.includedServer.isNotEmpty() &&
+        (state.draft.groupId == null || state.draft.includedServer.size >= 2) &&
         state.draft.amountMinor > 0 &&
         viewModel.serverShares(state) != null
 
@@ -937,7 +949,8 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
     PaidBySection(state = state, viewModel = viewModel)
 
     Spacer(Modifier.height(8.dp))
-    SectionLabel("Split between · ${state.draft.includedServer.size} people")
+    val includedCount = state.draft.includedServer.size
+    SectionLabel("Split between · $includedCount ${if (includedCount == 1) "person" else "people"}")
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         members.chunked(3).forEach { rowMembers ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

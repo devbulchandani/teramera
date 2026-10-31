@@ -169,6 +169,8 @@ class SyncRepository @Inject constructor(
         if (wroteAnything) _dataVersion.value += 1
         _lastSyncAt.value = now
         Result.Success
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
     } catch (e: Exception) {
         Result.Failure(e.userMessage("Sync failed"))
     }

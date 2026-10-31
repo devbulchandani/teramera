@@ -513,6 +513,28 @@ def run_checks():
     call("DELETE", f"/groups/{g3}")
     check("placeholder test group cleaned up", True)
 
+    # ---- personal expense (single participant, no group) ----
+    spend_before = call("GET", "/spend")["totalSpentMinor"]
+    personal = call("POST", "/expenses", {
+        "title": "Coffee",
+        "amountMinor": 5000,
+        "splitType": "EQUAL",
+        "participantIds": ["user-a"],
+        "paidByUserId": "user-a",
+    })
+    check("personal expense accepted", personal.get("shareCount") == 1, personal)
+    activity = call("GET", "/activity")
+    personal_event = [e for e in activity if e.get("title") == "Coffee"][0]
+    check("personal expense appears in activity", personal_event.get("participantCount") == 1, personal_event)
+    spend_after = call("GET", "/spend")
+    check(
+        "personal expense counts toward spend",
+        spend_after.get("totalSpentMinor") == spend_before + 5000,
+        spend_after,
+    )
+    call("PATCH", f"/expenses/{personal['id']}", {"title": "Coffee (personal)"})
+    check("personal expense can be edited", True)
+
     # ---- manage group: rename + delete (creator only) ----
     renamed = call("PATCH", f"/groups/{g2}", {"name": "Splits renamed"})
     check("group rename returns new name", renamed["name"] == "Splits renamed", renamed)

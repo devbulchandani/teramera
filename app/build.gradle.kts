@@ -47,8 +47,8 @@ android {
         applicationId = "com.example.teramera"
         minSdk = 24
         targetSdk = 37
-        versionCode = 26
-        versionName = "0.6.6"
+        versionCode = 27
+        versionName = "0.6.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

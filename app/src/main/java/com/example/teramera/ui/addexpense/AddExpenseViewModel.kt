@@ -310,17 +310,17 @@ class AddExpenseViewModel @Inject constructor(
         }
     }
 
-    /** Sign-in with no group selected: default to you + the friends you already share with. */
+    /** No group selected: start with just you, and add friends explicitly. */
     fun ensureServerDefaults() {
         val state = uiState.value
         if (!state.serverMode) return
         if (state.draft.groupId != null || state.draft.includedServer.isNotEmpty()) return
         val people = defaultServerPeople(state)
-        if (people.size >= 2) draft.update { it.copy(includedServer = people) }
+        if (people.isNotEmpty()) draft.update { it.copy(includedServer = people) }
     }
 
     private fun defaultServerPeople(state: AddExpenseUiState): Set<String> =
-        (listOfNotNull(state.selfServerId) + state.serverFriends.map { it.id }).toSet()
+        setOfNotNull(state.selfServerId)
 
     private suspend fun loadServerMembers(groupId: String): Boolean {
         memberLoad.value = MemberLoad(loading = true)
@@ -460,8 +460,12 @@ class AddExpenseViewModel @Inject constructor(
                     return@launch
                 }
                 val participants = d.includedServer.toList()
-                if (participants.size < 2) {
-                    saveState.value = SaveState(error = "Pick at least two people")
+                if (participants.isEmpty()) {
+                    saveState.value = SaveState(error = "Pick at least one person")
+                    return@launch
+                }
+                if (d.groupId != null && participants.size < 2) {
+                    saveState.value = SaveState(error = "A group expense needs at least two people")
                     return@launch
                 }
                 val split = ExpensesRepository.computeSplit(currentServerInput(state))

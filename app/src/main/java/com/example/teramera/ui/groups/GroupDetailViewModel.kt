@@ -101,12 +101,18 @@ class GroupDetailViewModel @Inject constructor(
         viewModelScope.launch {
             loadingRemote.value = true
             remoteError.value = null
-            if (!syncRepository.isLoggedIn()) {
-                // not signed in — local Room data (if any) is the only source
-                loadingRemote.value = false
-                return@launch
-            }
             try {
+                // Reading the auth store can itself stall/corrupt; keep it inside
+                // the timeout and the finally block so Loading can never stick.
+                val loggedIn = withTimeoutOrNull(5_000) { syncRepository.isLoggedIn() }
+                if (loggedIn != true) {
+                    remoteError.value = if (loggedIn == null) {
+                        "Couldn't read your session. Try again."
+                    } else {
+                        "Sign in again to see this group."
+                    }
+                    return@launch
+                }
                 val d = withTimeoutOrNull(25_000) { ledgerApi.groupDetail(groupId) }
                 if (d == null) {
                     remoteError.value = "Loading timed out. Check your connection and try again."

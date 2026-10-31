@@ -82,6 +82,15 @@ fun GroupDetailScreen(
     var renameOpen by remember { mutableStateOf(false) }
     var deleteOpen by remember { mutableStateOf(false) }
     var claimDismissed by remember { mutableStateOf(false) }
+    var slowLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(uiState.loading) {
+        if (uiState.loading) {
+            kotlinx.coroutines.delay(8_000)
+            slowLoading = true
+        } else {
+            slowLoading = false
+        }
+    }
 
     // loading / error / empty states instead of a blank screen
     if (uiState.loading) {
@@ -94,6 +103,12 @@ fun GroupDetailScreen(
             Spacer(Modifier.height(12.dp))
             Text("Loading group…", style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (slowLoading) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = viewModel::refresh) { Text("Retry") }
+                    TextButton(onClick = onBack) { Text("Back to groups") }
+                }
+            }
         }
         return
     }
@@ -561,7 +576,8 @@ private fun ExpenseRow(
         Column(Modifier.weight(1f)) {
             Text(line.title, style = MaterialTheme.typography.titleMedium)
             Text(
-                "paid by ${line.payerName}${if (line.payerCount > 1) " +${line.payerCount - 1}" else ""} · ${line.participantCount} people · ${TimeFormat.dayTime(line.createdAt)}",
+                "paid by ${line.payerName}${if (line.payerCount > 1) " +${line.payerCount - 1}" else ""} · " +
+                    "${line.participantCount} ${if (line.participantCount == 1) "person" else "people"} · ${TimeFormat.dayTime(line.createdAt)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

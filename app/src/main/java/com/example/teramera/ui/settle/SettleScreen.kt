@@ -184,7 +184,8 @@ fun SettleScreen(
                 Baanto(state = BaantoState.Pleased, size = 40.dp, animate = true)
             }
             Text(
-                "₹${formatInr(youOweTotal)} across ${state.balances.count { it.amountMinor < 0 }} people",
+                "₹${formatInr(youOweTotal)} across ${state.balances.count { it.amountMinor < 0 }} " +
+                    "${if (state.balances.count { it.amountMinor < 0 } == 1) "person" else "people"}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.78f),
                 modifier = Modifier.padding(top = 4.dp),

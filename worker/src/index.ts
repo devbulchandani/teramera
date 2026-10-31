@@ -1011,10 +1011,14 @@ app.post("/expenses", async (c) => {
             await rows<{ user_id: string }>(c, "SELECT user_id FROM memberships WHERE group_id = ?", body.groupId)
         ).map((r) => r.user_id);
     } else {
-        return jsonError(c, 400, "At least two people required");
+        // A personal (no-group) expense can belong to the caller alone.
+        participantIds = [userId];
     }
     participantIds = [...new Set(participantIds)];
-    if (participantIds.length < 2) return jsonError(c, 400, "At least two people required");
+    if (participantIds.length < 1) return jsonError(c, 400, "At least one person is required");
+    if (body.groupId && participantIds.length < 2) {
+        return jsonError(c, 400, "A group expense needs at least two people");
+    }
 
     // everyone involved must exist
     for (const pid of [...new Set([...participantIds, ...payments.map((p) => p.userId)])]) {
@@ -1159,7 +1163,10 @@ app.patch("/expenses/:expenseId", async (c) => {
         participantIds = existingShares.map((s) => s.user_id as string);
     }
     participantIds = [...new Set(participantIds)];
-    if (participantIds.length < 2) return jsonError(c, 400, "At least two people required");
+    if (participantIds.length < 1) return jsonError(c, 400, "At least one person is required");
+    if (expense.group_id && participantIds.length < 2) {
+        return jsonError(c, 400, "A group expense needs at least two people");
+    }
 
     for (const pid of participantIds) {
         const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", pid);

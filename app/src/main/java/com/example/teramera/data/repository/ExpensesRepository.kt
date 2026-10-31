@@ -85,7 +85,7 @@ class ExpensesRepository @Inject constructor(
     companion object {
         fun computeSplit(input: SplitInput): SplitResult {
             val people = input.participants.distinct()
-            if (people.isEmpty()) return SplitResult.Invalid("Pick at least two people")
+            if (people.isEmpty()) return SplitResult.Invalid("Pick at least one person")
             if (input.totalMinor <= 0) return SplitResult.Invalid("Amount must be greater than zero")
             if (input.rawValues.values.any { it < 0 }) return SplitResult.Invalid("Amounts cannot be negative")
             return when (input.type) {
