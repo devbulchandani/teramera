@@ -169,6 +169,16 @@ function isPositiveInteger(value: unknown): value is number {
 }
 
 /** Public origin for links; follows the request scheme so local dev works over http. */
+function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+    }[ch] as string));
+}
+
 function originOf(c: any): string {
     return c.env.APP_BASE_URL || new URL(c.req.url).origin;
 }
@@ -564,6 +574,83 @@ app.post("/groups/:groupId/members", async (c) => {
     return c.json({ status: "added", name: user.name ?? "" });
 });
 
+/** Placeholder member for someone who hasn't signed up yet. */
+app.post("/groups/:groupId/dummies", async (c) => {
+    const groupId = c.req.param("groupId");
+    const userId = c.get("userId");
+    await requireMember(c, groupId, userId);
+
+    const body = await c.req.json<{ name?: string }>();
+    const name = body.name?.trim();
+    if (!name) return jsonError(c, 400, "name is required");
+    if (name.length > 60) return jsonError(c, 400, "Name must be 60 characters or fewer");
+
+    const id = `dummy:${crypto.randomUUID()}`;
+    await run(
+        c,
+        "INSERT INTO users (id, phone, email, name, created_at) VALUES (?, NULL, NULL, ?, ?)",
+        id, name, Date.now(),
+    );
+    await run(
+        c,
+        "INSERT INTO memberships (group_id, user_id, role) VALUES (?, ?, 'member')",
+        groupId, id,
+    );
+    return c.json({ id, name, isSelf: false, isDummy: true, upiId: "" });
+});
+
+/**
+ * A real member claims a placeholder: all expenses, shares and settlements
+ * move from the dummy id to the signed-in user, then the dummy is removed.
+ */
+app.post("/groups/:groupId/claim-dummy", async (c) => {
+    const groupId = c.req.param("groupId");
+    const userId = c.get("userId");
+    await requireMember(c, groupId, userId);
+
+    const body = await c.req.json<{ dummyUserId?: string }>();
+    const dummyId = body.dummyUserId ?? "";
+    if (!dummyId.startsWith("dummy:")) return jsonError(c, 400, "Not a placeholder member");
+
+    const [dummy] = await rows<Row>(
+        c,
+        `SELECT u.id, u.name FROM users u
+         JOIN memberships m ON m.user_id = u.id
+         WHERE u.id = ? AND m.group_id = ?`,
+        dummyId, groupId,
+    );
+    if (!dummy) return jsonError(c, 404, "Placeholder member not found in this group");
+    if (dummyId === userId) return jsonError(c, 400, "You cannot claim yourself");
+
+    // Once a real user has activity here, claiming another placeholder would
+    // merge two people's ledgers together.
+    const [existing] = await rows<Row>(
+        c,
+        `SELECT
+           (SELECT COUNT(*) FROM expense_shares s
+              JOIN expenses e ON e.id = s.expense_id
+             WHERE e.group_id = ? AND s.user_id = ?) AS shares,
+           (SELECT COUNT(*) FROM expenses e
+             WHERE e.group_id = ? AND e.paid_by_user_id = ?) AS paid`,
+        groupId, userId, groupId, userId,
+    );
+    if (Number(existing?.shares ?? 0) > 0 || Number(existing?.paid ?? 0) > 0) {
+        return jsonError(c, 409, "You already have expenses in this group");
+    }
+
+    await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM memberships WHERE group_id = ? AND user_id = ?").bind(groupId, dummyId),
+        c.env.DB.prepare("UPDATE expenses SET paid_by_user_id = ? WHERE group_id = ? AND paid_by_user_id = ?").bind(userId, groupId, dummyId),
+        c.env.DB.prepare(
+            "UPDATE expense_shares SET user_id = ? WHERE user_id = ? AND expense_id IN (SELECT id FROM expenses WHERE group_id = ?)",
+        ).bind(userId, dummyId, groupId),
+        c.env.DB.prepare("UPDATE settlements SET payer_user_id = ? WHERE group_id = ? AND payer_user_id = ?").bind(userId, groupId, dummyId),
+        c.env.DB.prepare("UPDATE settlements SET paid_to_user_id = ? WHERE group_id = ? AND paid_to_user_id = ?").bind(userId, groupId, dummyId),
+        c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(dummyId),
+    ]);
+    return c.json({ status: "claimed", dummyUserId: dummyId, userId });
+});
+
 app.get("/groups", async (c) => {
     const userId = c.get("userId");
     const list = await rows<GroupRow>(
@@ -679,6 +766,7 @@ app.get("/groups/:groupId/detail", async (c) => {
         id: u.id,
         name: u.name ?? "?",
         isSelf: u.id === userId,
+        isDummy: typeof u.id === "string" && u.id.startsWith("dummy:"),
         upiId: u.upi_id ?? "",
     }));
     const nameById = new Map(memberRows.map((u) => [u.id, u.name ?? "?"]));
@@ -1099,6 +1187,86 @@ app.delete("/expenses/:expenseId", async (c) => {
         await run(c, "DELETE FROM expenses WHERE id = ?", sib.id);
     }
     return c.json({ status: "deleted", id: expenseId });
+});
+
+// ---------- settle requests ----------
+
+/**
+ * Emails the person who owes money a UPI intent they can tap to pay.
+ * Placeholders have no email, and the requester must have a UPI ID so the
+ * intent can actually route the payment.
+ */
+app.post("/settlements/request", async (c) => {
+    const userId = c.get("userId");
+    const body = await c.req.json<{ toUserId?: string; amountMinor?: number }>();
+    if (!body.toUserId) return jsonError(c, 400, "toUserId is required");
+    if (!isPositiveInteger(body.amountMinor)) return jsonError(c, 400, "Amount must be a positive whole number of paise");
+    if (body.toUserId === userId) return jsonError(c, 400, "You cannot request a payment from yourself");
+    if (body.toUserId.startsWith("dummy:")) {
+        return jsonError(c, 409, "This member is a placeholder and has no email yet");
+    }
+
+    const [requester] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", userId);
+    const [recipient] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", body.toUserId);
+    if (!requester) return jsonError(c, 404, "Your account was not found");
+    if (!recipient) return jsonError(c, 404, "That person is not on teramera");
+    if (!recipient.email) return jsonError(c, 409, "That person doesn't have an email address yet");
+    if (!requester.upi_id) {
+        return jsonError(c, 400, "Add your UPI ID in Profile before requesting a payment");
+    }
+
+    const amountMinor = body.amountMinor!;
+    const amount = (amountMinor / 100).toFixed(2);
+    const requesterName = requester.name?.trim() || "A friend";
+    const recipientName = recipient.name?.trim() || "there";
+    const origin = originOf(c);
+    const params = new URLSearchParams({
+        pa: requester.upi_id,
+        pn: requesterName,
+        am: amount,
+        cu: "INR",
+        tn: "teramera settle",
+    });
+    const upiIntent = `upi://pay?${params.toString()}`;
+    const safeRequester = escapeHtml(requesterName);
+    const safeRecipient = escapeHtml(recipientName);
+    const safeUpi = escapeHtml(requester.upi_id);
+    const rupees = `₹${Number(amount).toLocaleString("en-IN")}`;
+
+    const subject = `${requesterName} requested ${rupees} on teramera`;
+    const html = `
+      <div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:28px;color:#121220">
+        <div style="font-size:30px;font-weight:800;letter-spacing:-1px;margin-bottom:18px">
+          <span style="color:#F1AB88">tere</span><span style="color:#78C1B7">mera</span>
+        </div>
+        <p style="font-size:16px;line-height:1.55;margin:0 0 10px">Hi ${safeRecipient},</p>
+        <p style="font-size:16px;line-height:1.55;margin:0 0 18px">
+          <b>${safeRequester}</b> has requested <b>${rupees}</b> to settle up on teramera.
+        </p>
+        <a href="${upiIntent}"
+           style="display:block;text-align:center;background:#F1AB88;color:#121220;text-decoration:none;
+                  font-weight:700;font-size:16px;padding:16px;border-radius:999px;margin:22px 0">
+          Pay ${rupees} with UPI
+        </a>
+        <p style="font-size:14px;color:#505063;line-height:1.6;margin:0 0 6px">
+          Or pay to <b>${safeUpi}</b> in any UPI app.
+        </p>
+        <p style="font-size:14px;color:#505063;line-height:1.6;margin:18px 0 0">
+          <a href="${origin}" style="color:#505063">Open teramera</a> to see the full balance and record the payment.
+        </p>
+        <p style="font-size:12px;color:#6D6D7A;line-height:1.6;margin:22px 0 0">
+          This request was sent because ${safeRequester} chose to remind you from teramera.
+        </p>
+      </div>`;
+    const text = `${requesterName} requested ${rupees} on teramera. Pay with UPI: ${upiIntent} (UPI ID: ${requester.upi_id}).`;
+
+    try {
+        const status = await sendMail(c.env, recipient.email, subject, html, text);
+        return c.json({ status, amountMinor });
+    } catch (err) {
+        console.error("Settle request email failed:", err);
+        return jsonError(c, 502, "Couldn't send the settle request email");
+    }
 });
 
 // ---------- settlements ----------

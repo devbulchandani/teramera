@@ -17,6 +17,18 @@ data class ExpenseLine(
     val createdAt: Long,
 )
 
+data class DummyMember(
+    val id: String,
+    val name: String,
+)
+
+data class GroupMember(
+    val id: String,
+    val name: String,
+    val isSelf: Boolean,
+    val isDummy: Boolean,
+)
+
 data class DebtTransfer(
     val fromUserId: String,
     val fromName: String,
@@ -36,6 +48,8 @@ data class GroupDetail(
     val simplifiedDebts: List<DebtTransfer>,
     val worstCasePayments: Int,
     val isOwner: Boolean = false,
+    val dummyMembers: List<DummyMember> = emptyList(),
+    val members: List<GroupMember> = emptyList(),
 )
 
 /**

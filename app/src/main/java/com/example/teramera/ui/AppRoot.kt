@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.example.teramera.ui.components.PlusIcon
 import com.example.teramera.ui.theme.Ink900
 import com.example.teramera.ui.theme.Paper000
+import com.example.teramera.ui.theme.Peach
 import com.example.teramera.ui.theme.Paper100
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -239,6 +241,7 @@ private fun MainApp(
     // ---- group invite deep links (teramera://invite/<id> or https://…/invite/<id>) ----
     val activity = androidx.compose.ui.platform.LocalContext.current as? androidx.activity.ComponentActivity
     var pendingInvite by rememberSaveable { mutableStateOf(activity?.intent?.let { extractInviteId(it) }) }
+    var pendingClaimGroup by rememberSaveable { mutableStateOf<String?>(null) }
     val newIntentListener = remember {
         androidx.core.util.Consumer<android.content.Intent> { intent ->
             extractInviteId(intent)?.let { pendingInvite = it }
@@ -264,6 +267,7 @@ private fun MainApp(
                     val groupId = validInvite
                     pendingInvite = null
                     sessionViewModel.joinGroup(groupId) { id ->
+                        pendingClaimGroup = id
                         navController.navigate(Routes.groupDetail(id))
                     }
                 }) { Text("Join", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
@@ -315,19 +319,13 @@ private fun MainApp(
         },
         floatingActionButton = {
             if (!onGroupDetail && (currentRoute == Routes.HOME || currentRoute == Routes.GROUPS)) {
-                FloatingActionButton(
+                AddExpenseFab(
                     onClick = {
                         // a group picked by an earlier group-screen add must not leak in
                         addExpenseGroupId = null
                         showAddExpense = true
                     },
-                    containerColor = Paper000,
-                    contentColor = Ink900,
-                    shape = CircleShape,
-                    modifier = Modifier.semantics { contentDescription = "Add expense" },
-                ) {
-                    PlusIcon(tint = Ink900, size = 24.dp)
-                }
+                )
             }
         },
     ) { innerPadding ->
@@ -351,10 +349,13 @@ private fun MainApp(
             composable(Routes.GROUPS) {
                 GroupsScreen(onOpenGroup = { groupId -> navController.navigate(Routes.groupDetail(groupId)) })
             }
-            composable(Routes.GROUP_DETAIL) {
+            composable(Routes.GROUP_DETAIL) { entry ->
                 val context = androidx.compose.ui.platform.LocalContext.current
+                val detailGroupId = entry.arguments?.getString("groupId")
                 GroupDetailScreen(
                     onBack = { navController.popBackStack() },
+                    showClaimPrompt = pendingClaimGroup != null && pendingClaimGroup == detailGroupId,
+                    onClaimHandled = { pendingClaimGroup = null },
                     onAddExpense = { groupId ->
                         addExpenseGroupId = groupId
                         showAddExpense = true
@@ -441,6 +442,40 @@ private fun FloatingNav(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Branded add-expense action: a cream pill with a peach coin and a bold plus. */
+@Composable
+private fun AddExpenseFab(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = Paper000,
+        contentColor = Ink900,
+        shadowElevation = 16.dp,
+        modifier = Modifier.semantics { contentDescription = "Add expense" },
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 8.dp, end = 18.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Peach),
+                contentAlignment = Alignment.Center,
+            ) {
+                PlusIcon(tint = Ink900, size = 22.dp)
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "Add expense",
+                style = MaterialTheme.typography.labelLarge,
+                color = Ink900,
+            )
         }
     }
 }

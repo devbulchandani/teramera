@@ -33,6 +33,13 @@ data class AddMemberState(
     val searching: Boolean = false,
     val found: com.example.teramera.core.network.FoundUserDto? = null,
     val error: String? = null,
+    val dummyBusy: Boolean = false,
+    val dummyError: String? = null,
+)
+
+data class ClaimDummyState(
+    val busy: Boolean = false,
+    val error: String? = null,
 )
 
 data class GroupManageState(
@@ -130,6 +137,17 @@ class GroupDetailViewModel @Inject constructor(
                     },
                     worstCasePayments = d.worstCasePayments,
                     isOwner = d.createdBy.isNotEmpty() && d.createdBy == selfId,
+                    dummyMembers = d.members
+                        .filter { it.isDummy }
+                        .map { com.example.teramera.data.repository.DummyMember(it.id, it.name) },
+                    members = d.members.map {
+                        com.example.teramera.data.repository.GroupMember(
+                            id = it.id,
+                            name = it.name,
+                            isSelf = it.isSelf,
+                            isDummy = it.isDummy,
+                        )
+                    },
                 )
             } catch (e: retrofit2.HttpException) {
                 remoteError.value = when (e.code()) {
@@ -302,6 +320,53 @@ class GroupDetailViewModel @Inject constructor(
                 refresh()
             } catch (e: Exception) {
                 addMember.value = addMember.value.copy(searching = false, error = e.message ?: "Couldn't add")
+            }
+        }
+    }
+
+    /** Adds someone who hasn't signed up yet; they can claim this later. */
+    fun addDummyMember(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || addMember.value.dummyBusy) return
+        viewModelScope.launch {
+            addMember.value = addMember.value.copy(dummyBusy = true, dummyError = null)
+            try {
+                ledgerApi.addDummyMember(
+                    groupId,
+                    com.example.teramera.core.network.AddDummyMemberRequestDto(trimmed),
+                )
+                addMember.value = AddMemberState()
+                syncRepository.refreshNow()
+                refresh()
+            } catch (e: Exception) {
+                addMember.value = addMember.value.copy(
+                    dummyBusy = false,
+                    dummyError = e.message ?: "Couldn't add placeholder",
+                )
+            }
+        }
+    }
+
+    // ---- claim a placeholder after joining ----
+
+    private val claimState = MutableStateFlow(ClaimDummyState())
+    val claim: StateFlow<ClaimDummyState> = claimState
+
+    fun claimDummy(dummyUserId: String, onDone: () -> Unit) {
+        if (claimState.value.busy) return
+        viewModelScope.launch {
+            claimState.value = ClaimDummyState(busy = true)
+            try {
+                ledgerApi.claimDummy(
+                    groupId,
+                    com.example.teramera.core.network.ClaimDummyRequestDto(dummyUserId),
+                )
+                claimState.value = ClaimDummyState()
+                syncRepository.refreshNow()
+                refresh()
+                onDone()
+            } catch (e: Exception) {
+                claimState.value = ClaimDummyState(error = e.message ?: "Couldn't claim that member")
             }
         }
     }

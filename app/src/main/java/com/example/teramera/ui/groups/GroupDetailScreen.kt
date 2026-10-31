@@ -27,10 +27,12 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,9 +54,11 @@ import com.example.teramera.ui.components.Baanto
 import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.components.HeaderIconButton
 import com.example.teramera.ui.components.InkHeader
+import com.example.teramera.ui.components.GroupMascot
 import com.example.teramera.ui.components.MoreIcon
 import com.example.teramera.ui.components.PlusIcon
 import com.example.teramera.ui.components.ShareIcon
+import com.example.teramera.ui.home.Avatar
 import com.example.teramera.ui.home.formatInr
 import com.example.teramera.ui.theme.Ink900
 import com.example.teramera.ui.theme.Paper000
@@ -65,6 +69,8 @@ fun GroupDetailScreen(
     onBack: () -> Unit,
     onAddExpense: (String) -> Unit = {},
     onShareGroup: (String, String) -> Unit = { _, _ -> },
+    showClaimPrompt: Boolean = false,
+    onClaimHandled: () -> Unit = {},
     viewModel: GroupDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.detail.collectAsStateWithLifecycle()
@@ -72,8 +78,10 @@ fun GroupDetailScreen(
     val expenseEditState by viewModel.expenseEditState.collectAsStateWithLifecycle()
     val settleState by viewModel.settle.collectAsStateWithLifecycle()
     val manageState by viewModel.manage.collectAsStateWithLifecycle()
+    val claimState by viewModel.claim.collectAsStateWithLifecycle()
     var renameOpen by remember { mutableStateOf(false) }
     var deleteOpen by remember { mutableStateOf(false) }
+    var claimDismissed by remember { mutableStateOf(false) }
 
     // loading / error / empty states instead of a blank screen
     if (uiState.loading) {
@@ -120,12 +128,35 @@ fun GroupDetailScreen(
     }
     val d = uiState.detail ?: return
 
+    LaunchedEffect(showClaimPrompt, d.dummyMembers) {
+        if (showClaimPrompt && d.dummyMembers.isEmpty()) onClaimHandled()
+    }
+
+    if (showClaimPrompt && !claimDismissed && d.dummyMembers.isNotEmpty()) {
+        ClaimDummyDialog(
+            dummies = d.dummyMembers,
+            busy = claimState.busy,
+            error = claimState.error,
+            onClaim = { id ->
+                viewModel.claimDummy(id) {
+                    claimDismissed = true
+                    onClaimHandled()
+                }
+            },
+            onSkip = {
+                claimDismissed = true
+                onClaimHandled()
+            },
+        )
+    }
+
     if (addMemberState.visible) {
         AddMemberDialog(
             state = addMemberState,
             onFind = viewModel::findFriend,
             onConfirm = viewModel::confirmAddMember,
             onInviteByEmail = viewModel::inviteByEmail,
+            onAddDummy = viewModel::addDummyMember,
             onDismiss = viewModel::dismissAddMember,
         )
     }
@@ -210,6 +241,10 @@ fun GroupDetailScreen(
                     ),
                 ) {
                     item { SimplifiedDebtsCard(d) }
+                    if (d.members.isNotEmpty()) {
+                        item { SectionLabel("Members") }
+                        item { MembersCard(d.members) }
+                    }
                     if (d.expenses.isNotEmpty()) {
                         item { SectionLabel("Expenses") }
                         item {
@@ -439,6 +474,64 @@ private fun SimplifiedDebtsCard(d: com.example.teramera.data.repository.GroupDet
 }
 
 @Composable
+private fun MembersCard(members: List<com.example.teramera.data.repository.GroupMember>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 16.dp),
+    ) {
+        members.forEachIndexed { index, member ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+            ) {
+                if (member.isDummy) {
+                    GroupMascot(index = member.id.hashCode(), size = 40.dp)
+                } else {
+                    Avatar(
+                        initials = initialsOf(member.name),
+                        isViolet = member.id.hashCode() % 2 == 0,
+                        size = 40.dp,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (member.isSelf) "${member.name} (you)" else member.name,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        if (member.isDummy) "Placeholder · can claim this when they join"
+                        else "Member",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (member.isDummy) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            "PLACEHOLDER",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+            }
+            if (index != members.lastIndex) Hairline()
+        }
+    }
+}
+
+@Composable
 private fun ExpenseRow(
     line: com.example.teramera.data.repository.ExpenseLine,
     onClick: () -> Unit = {},
@@ -515,9 +608,11 @@ private fun AddMemberDialog(
     onFind: (String) -> Unit,
     onConfirm: (String) -> Unit,
     onInviteByEmail: (String) -> Unit,
+    onAddDummy: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var phone by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var dummyName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -586,6 +681,36 @@ private fun AddMemberDialog(
                             ) { Text("Email them an invite link") }
                         }
                     }
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("Not on teramera yet?", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Add them as a placeholder. When they join, they can claim this member and all past expenses move with it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+                )
+                OutlinedTextField(
+                    value = dummyName,
+                    onValueChange = { dummyName = it },
+                    label = { Text("Their name") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                state.dummyError?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+                TextButton(
+                    onClick = { onAddDummy(dummyName) },
+                    enabled = dummyName.isNotBlank() && !state.dummyBusy && !state.searching,
+                ) {
+                    Text(if (state.dummyBusy) "Adding…" else "Add placeholder")
                 }
             }
         },
@@ -715,6 +840,70 @@ private fun methodLabel(method: PaymentMethod): String = when (method) {
     PaymentMethod.UPI -> "UPI"
     PaymentMethod.CASH -> "Cash"
     PaymentMethod.BANK -> "Bank"
+}
+
+@Composable
+private fun ClaimDummyDialog(
+    dummies: List<com.example.teramera.data.repository.DummyMember>,
+    busy: Boolean,
+    error: String?,
+    onClaim: (String) -> Unit,
+    onSkip: () -> Unit,
+) {
+    var selected by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onSkip() },
+        shape = MaterialTheme.shapes.large,
+        title = { Text("Who are you in this group?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "This group was set up before you joined. Pick your placeholder so past expenses count for you.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                dummies.forEach { dummy ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(
+                                if (selected == dummy.id) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                            .clickable { selected = dummy.id }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        RadioButton(
+                            selected = selected == dummy.id,
+                            onClick = { selected = dummy.id },
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(dummy.name, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = selected != null && !busy,
+                onClick = { selected?.let(onClaim) },
+            ) { Text(if (busy) "Claiming…" else "That's me", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onSkip) { Text("I'm new here") }
+        },
+    )
 }
 
 @Composable

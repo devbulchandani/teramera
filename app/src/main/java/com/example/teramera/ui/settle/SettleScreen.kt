@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +52,7 @@ import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.components.CheckIcon
 import com.example.teramera.ui.components.EmptyState
 import com.example.teramera.ui.components.InkHeader
+import com.example.teramera.ui.components.MailIcon
 import com.example.teramera.ui.home.Avatar
 import com.example.teramera.ui.home.formatInr
 import com.example.teramera.ui.theme.Ink900
@@ -60,6 +62,7 @@ fun SettleScreen(
     viewModel: SettleViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val requestState by viewModel.request.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // UPI-first settle: open the UPI app, confirm the payment, only then record it
@@ -230,6 +233,8 @@ fun SettleScreen(
             onCustomBackspace = viewModel::onBackspace,
             onMethod = viewModel::setMethod,
             onSave = { state.draft?.let { onSave(it) } },
+            request = requestState,
+            onRequest = viewModel::requestSettle,
             onDismiss = viewModel::clear,
         )
     }
@@ -295,6 +300,8 @@ private fun SettleSheet(
     onCustomBackspace: () -> Unit,
     onMethod: (PaymentMethod) -> Unit,
     onSave: () -> Unit,
+    request: SettleRequestState,
+    onRequest: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -335,6 +342,60 @@ private fun SettleSheet(
                 SectionLabel("How did you pay?")
                 PaymentMethod.entries.forEach { method ->
                     MethodRow(method = method, selected = draft.method == method, onSelect = onMethod)
+                }
+
+                if (draft.person.amountMinor > 0) {
+                    if (!draft.person.id.startsWith("dummy:")) {
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = onRequest,
+                            enabled = !request.sending && draft.amountMinor > 0,
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                        ) {
+                            MailIcon(tint = MaterialTheme.colorScheme.onSurface, size = 18.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (request.sending) "Sending request…" else "Send settle request",
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+                        Text(
+                            "They'll get an email with a UPI link for ₹${formatInr(draft.amountMinor)}.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                        request.message?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
+                        request.error?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
+                    } else {
+                        Text(
+                            "Placeholder member — they can claim this balance after they join.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                 }
 
                 error?.let {

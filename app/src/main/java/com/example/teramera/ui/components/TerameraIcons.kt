@@ -21,19 +21,23 @@ fun HomeIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
     Canvas(modifier.size(size)) {
         val s = this.size.width / 24f
         val w = 1.75f * s
-        fun p(x: Float, y: Float) = Offset(x * s, y * s)
-        val roof = Path().apply {
-            moveTo(3f, 10.5f)
-            lineTo(12f, 3f)
-            lineTo(21f, 10.5f)
-            lineTo(21f, 21f)
-            lineTo(3f, 21f)
+        val house = Path().apply {
+            moveTo(4f * s, 10.8f * s)
+            lineTo(12f * s, 4f * s)
+            lineTo(20f * s, 10.8f * s)
+            lineTo(20f * s, 19.2f * s)
+            quadraticTo(20f * s, 20f * s, 19.2f * s, 20f * s)
+            lineTo(15.2f * s, 20f * s)
+            lineTo(15.2f * s, 14.8f * s)
+            quadraticTo(15.2f * s, 14f * s, 14.4f * s, 14f * s)
+            lineTo(9.6f * s, 14f * s)
+            quadraticTo(8.8f * s, 14f * s, 8.8f * s, 14.8f * s)
+            lineTo(8.8f * s, 20f * s)
+            lineTo(4.8f * s, 20f * s)
+            quadraticTo(4f * s, 20f * s, 4f * s, 19.2f * s)
             close()
         }
-        drawPath(roof, tint, style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        drawLine(tint, p(9f, 21f), p(9f, 15f), w, StrokeCap.Round)
-        drawLine(tint, p(9f, 15f), p(15f, 15f), w, StrokeCap.Round)
-        drawLine(tint, p(15f, 15f), p(15f, 21f), w, StrokeCap.Round)
+        drawPath(house, tint, style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
@@ -43,18 +47,18 @@ fun GroupsIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
         val s = this.size.width / 24f
         val w = 1.75f * s
         fun c(x: Float, y: Float) = Offset(x * s, y * s)
-        // Two Baanto-style coins: the back one peeks out from behind the front.
-        drawCircle(tint, radius = 6.5f * s, center = c(9f, 11.5f), style = Stroke(w, cap = StrokeCap.Round))
-        drawCircle(tint, radius = 7.5f * s, center = c(14.5f, 13f), style = Stroke(w, cap = StrokeCap.Round))
-        drawCircle(tint, radius = 1.2f * s, center = c(12f, 11.5f))
-        drawCircle(tint, radius = 1.2f * s, center = c(17f, 11.5f))
+        // Two Baanto coins, the smaller one tucked behind the front face.
+        drawCircle(tint, radius = 5.5f * s, center = c(8.5f, 10.8f), style = Stroke(w, cap = StrokeCap.Round))
+        drawCircle(tint, radius = 6f * s, center = c(15f, 13.2f), style = Stroke(w, cap = StrokeCap.Round))
+        drawCircle(tint, radius = 1.1f * s, center = c(13f, 12.2f))
+        drawCircle(tint, radius = 1.1f * s, center = c(17f, 12.2f))
         drawArc(
             color = tint,
             startAngle = 20f,
             sweepAngle = 140f,
             useCenter = false,
-            topLeft = c(12.5f, 13f),
-            size = Size(4f * s, 3f * s),
+            topLeft = c(12.7f, 13.8f),
+            size = Size(4.6f * s, 3.2f * s),
             style = Stroke(1.5f * s, cap = StrokeCap.Round),
         )
     }
@@ -65,13 +69,12 @@ fun ActivityIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
     Canvas(modifier.size(size)) {
         val s = this.size.width / 24f
         val w = 1.75f * s
-        fun p(x: Float, y: Float) = Offset(x * s, y * s)
         val pulse = Path().apply {
             moveTo(3f * s, 12f * s)
-            lineTo(6.5f * s, 12f * s)
-            lineTo(9f * s, 5.5f * s)
-            lineTo(13.5f * s, 18.5f * s)
-            lineTo(16.5f * s, 12f * s)
+            lineTo(7.2f * s, 12f * s)
+            lineTo(9.4f * s, 6.2f * s)
+            lineTo(14f * s, 17.8f * s)
+            lineTo(16.2f * s, 12f * s)
             lineTo(21f * s, 12f * s)
         }
         drawPath(pulse, tint, style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round))
@@ -84,12 +87,12 @@ fun SettleIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
         val s = this.size.width / 24f
         val w = 1.75f * s
         fun p(x: Float, y: Float) = Offset(x * s, y * s)
-        drawLine(tint, p(4f, 8f), p(19f, 8f), w, StrokeCap.Round)
-        drawLine(tint, p(16f, 5f), p(19f, 8f), w, StrokeCap.Round)
-        drawLine(tint, p(19f, 8f), p(16f, 11f), w, StrokeCap.Round)
-        drawLine(tint, p(20f, 16f), p(5f, 16f), w, StrokeCap.Round)
-        drawLine(tint, p(8f, 13f), p(5f, 16f), w, StrokeCap.Round)
-        drawLine(tint, p(5f, 16f), p(8f, 19f), w, StrokeCap.Round)
+        drawLine(tint, p(4f, 8.5f), p(19f, 8.5f), w, StrokeCap.Round)
+        drawLine(tint, p(16f, 5.5f), p(19f, 8.5f), w, StrokeCap.Round)
+        drawLine(tint, p(19f, 8.5f), p(16f, 11.5f), w, StrokeCap.Round)
+        drawLine(tint, p(20f, 15.5f), p(5f, 15.5f), w, StrokeCap.Round)
+        drawLine(tint, p(8f, 12.5f), p(5f, 15.5f), w, StrokeCap.Round)
+        drawLine(tint, p(5f, 15.5f), p(8f, 18.5f), w, StrokeCap.Round)
     }
 }
 
@@ -212,5 +215,23 @@ fun MoreIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
         drawCircle(tint, radius = 1.7f * s, center = Offset(12f * s, 5f * s))
         drawCircle(tint, radius = 1.7f * s, center = Offset(12f * s, 12f * s))
         drawCircle(tint, radius = 1.7f * s, center = Offset(12f * s, 19f * s))
+    }
+}
+
+@Composable
+fun MailIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val s = this.size.width / 24f
+        val w = 1.75f * s
+        val envelope = Path().apply {
+            moveTo(3.5f * s, 6f * s)
+            lineTo(20.5f * s, 6f * s)
+            lineTo(20.5f * s, 18f * s)
+            lineTo(3.5f * s, 18f * s)
+            close()
+        }
+        drawPath(envelope, tint, style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawLine(tint, Offset(4f * s, 7f * s), Offset(12f * s, 13f * s), w, StrokeCap.Round)
+        drawLine(tint, Offset(20f * s, 7f * s), Offset(12f * s, 13f * s), w, StrokeCap.Round)
     }
 }

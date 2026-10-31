@@ -38,6 +38,11 @@ data class PaymentDto(val userId: String, val amountMinor: Long)
 
 data class CreateExpenseResponseDto(val id: String, val amountMinor: Long, val shareCount: Int)
 
+data class RequestSettlementRequestDto(
+    val toUserId: String,
+    val amountMinor: Long,
+)
+
 data class CreateSettlementRequestDto(
     val groupId: String?,
     val payerUserId: String?,
@@ -50,7 +55,15 @@ data class CreateSettlementRequestDto(
 
 data class FoundUserDto(val id: String, val name: String, val phone: String?, val email: String?)
 data class AddMemberRequestDto(val userId: String)
-data class MemberDto(val id: String, val name: String, val isSelf: Boolean, val upiId: String? = null)
+data class MemberDto(
+    val id: String,
+    val name: String,
+    val isSelf: Boolean,
+    val isDummy: Boolean = false,
+    val upiId: String? = null,
+)
+data class AddDummyMemberRequestDto(val name: String)
+data class ClaimDummyRequestDto(val dummyUserId: String)
 data class MeDto(val id: String, val phone: String?, val email: String?, val name: String?, val upiId: String?)
 data class UpdateMeRequestDto(val name: String? = null, val upiId: String? = null)
 data class ActivityEventDto(
@@ -155,6 +168,9 @@ interface LedgerApi {
     @POST("settlements")
     suspend fun createSettlement(@Body body: CreateSettlementRequestDto): Map<String, String>
 
+    @POST("settlements/request")
+    suspend fun requestSettlement(@Body body: RequestSettlementRequestDto): Map<String, String>
+
     @GET("users/find")
     suspend fun findUserByEmail(@Query("email") email: String): FoundUserDto
 
@@ -162,6 +178,18 @@ interface LedgerApi {
     suspend fun addMember(
         @Path("groupId") groupId: String,
         @Body body: AddMemberRequestDto,
+    ): Map<String, String>
+
+    @POST("groups/{groupId}/dummies")
+    suspend fun addDummyMember(
+        @Path("groupId") groupId: String,
+        @Body body: AddDummyMemberRequestDto,
+    ): MemberDto
+
+    @POST("groups/{groupId}/claim-dummy")
+    suspend fun claimDummy(
+        @Path("groupId") groupId: String,
+        @Body body: ClaimDummyRequestDto,
     ): Map<String, String>
 
     @POST("groups/{groupId}/join")

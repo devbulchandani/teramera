@@ -165,6 +165,7 @@ def token(sub):
 
 
 A, B = token("user-a"), token("user-b")
+C = token("user-c")
 
 
 def call(method, path, body=None, tok=A, expect=200):
@@ -450,6 +451,46 @@ def run_checks():
     call("DELETE", f"/expenses/{exact['id']}")
     detail = call("GET", f"/groups/{gid}/detail")
     check("delete removed both sibling rows", len(detail["expenses"]) == 1, detail["expenses"])
+
+    # ---- placeholder members can be added and claimed on join ----
+    g3 = call("POST", "/groups", {"name": "Placeholder test"})["id"]
+    call("POST", f"/groups/{g3}/members", {"userId": "user-b"})
+    dummy = call("POST", f"/groups/{g3}/dummies", {"name": "Cara placeholder"})
+    check("dummy member created", dummy.get("isDummy") is True, dummy)
+    detail3 = call("GET", f"/groups/{g3}/detail")
+    dummy_row = [m for m in detail3["members"] if m["id"] == dummy["id"]]
+    check("dummy appears as a group member", len(dummy_row) == 1 and dummy_row[0].get("isDummy") is True, detail3["members"])
+    # ---- settle request emails (UPI intent) ----
+    call("POST", "/settlements/request", {"toUserId": "user-b", "amountMinor": 5000}, expect=400)
+    check("settle request requires requester UPI", True)
+    call("PATCH", "/me", {"upiId": "alice@okhdfcbank"})
+    settle_req = call("POST", "/settlements/request", {"toUserId": "user-b", "amountMinor": 5000})
+    check("settle request email queued", settle_req.get("status") in ("sent", "logged"), settle_req)
+    call("POST", "/settlements/request", {"toUserId": dummy["id"], "amountMinor": 5000}, expect=409)
+    check("placeholder cannot receive a settle request", True)
+
+    call("POST", "/expenses", {
+        "groupId": g3,
+        "title": "Placeholder dinner",
+        "amountMinor": 9000,
+        "splitType": "EQUAL",
+        "participantIds": ["user-a", "user-b", dummy["id"]],
+        "paidByUserId": "user-a",
+    })
+    call("POST", f"/groups/{g3}/join", {}, tok=C)
+    claim = call("POST", f"/groups/{g3}/claim-dummy", {"dummyUserId": dummy["id"]}, tok=C)
+    check("placeholder claimed on join", claim["status"] == "claimed", claim)
+    detail3 = call("GET", f"/groups/{g3}/detail", tok=C)
+    member_ids = [m["id"] for m in detail3["members"]]
+    check("claimed placeholder removed", dummy["id"] not in member_ids, member_ids)
+    check("claiming user is now a member", "user-c" in member_ids, member_ids)
+    nets3 = {b["userId"]: b["netMinor"] for b in detail3["balances"]}
+    check("placeholder history moves to claimer", nets3.get("user-c") == -3000, nets3)
+    check("owner balance survives claim", nets3.get("user-a") == 6000, nets3)
+    call("POST", f"/groups/{g3}/claim-dummy", {"dummyUserId": dummy["id"]}, tok=C, expect=404)
+    check("claimed placeholder cannot be claimed twice", True)
+    call("DELETE", f"/groups/{g3}")
+    check("placeholder test group cleaned up", True)
 
     # ---- manage group: rename + delete (creator only) ----
     renamed = call("PATCH", f"/groups/{g2}", {"name": "Splits renamed"})

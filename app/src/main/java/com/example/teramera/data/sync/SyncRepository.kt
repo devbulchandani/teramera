@@ -176,6 +176,33 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    sealed interface SettleRequestResult {
+        /** [status] is "sent" or "logged" (email provider not configured). */
+        data class Sent(val status: String) : SettleRequestResult
+        data class Failure(val message: String) : SettleRequestResult
+    }
+
+    /** Emails a UPI settle link to the person who owes money. */
+    suspend fun requestSettlement(toUserId: String, amountMinor: Long): SettleRequestResult =
+        try {
+            val status = ledgerApi.requestSettlement(
+                com.example.teramera.core.network.RequestSettlementRequestDto(
+                    toUserId = toUserId,
+                    amountMinor = amountMinor,
+                )
+            )["status"] ?: "sent"
+            SettleRequestResult.Sent(status)
+        } catch (e: retrofit2.HttpException) {
+            val body = e.response()?.errorBody()?.string().orEmpty()
+            val message = runCatching {
+                org.json.JSONObject(body).optString("message")
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+                ?: "Couldn't send the settle request"
+            SettleRequestResult.Failure(message)
+        } catch (e: Exception) {
+            SettleRequestResult.Failure(e.message ?: "Couldn't send the settle request")
+        }
+
     /** Records a settlement against a counterparty, in whichever direction applies. */
     suspend fun pushSettlement(
         personUserId: String,

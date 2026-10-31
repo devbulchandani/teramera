@@ -27,6 +27,12 @@ data class SettleDraft(
     val isFull: Boolean get() = !customMode && amountMinor == fullAmount
 }
 
+data class SettleRequestState(
+    val sending: Boolean = false,
+    val message: String? = null,
+    val error: String? = null,
+)
+
 data class SettleUiState(
     val balances: List<BalanceEntry> = emptyList(),
     val draft: SettleDraft? = null,
@@ -43,6 +49,8 @@ class SettleViewModel @Inject constructor(
 
     private val draft = MutableStateFlow<SettleDraft?>(null)
     private val status = MutableStateFlow(SaveStatus())
+    private val requestState = MutableStateFlow(SettleRequestState())
+    val request: StateFlow<SettleRequestState> = requestState
 
     val uiState: StateFlow<SettleUiState> =
         combine(homeRepository.homeData(), homeRepository.syncedHomeData(), draft, status) { local, synced, d, st ->
@@ -69,6 +77,7 @@ class SettleViewModel @Inject constructor(
 
     fun start(entry: BalanceEntry) {
         status.value = SaveStatus()
+        requestState.value = SettleRequestState()
         draft.value = SettleDraft(
             person = entry,
             amountMinor = kotlin.math.abs(entry.amountMinor),
@@ -79,6 +88,7 @@ class SettleViewModel @Inject constructor(
     fun clear() {
         draft.value = null
         status.value = SaveStatus()
+        requestState.value = SettleRequestState()
     }
 
     fun setFull() = draft.update { it?.copy(customMode = false, amountMinor = it.fullAmount) }
@@ -100,6 +110,33 @@ class SettleViewModel @Inject constructor(
     }
 
     fun setMethod(method: PaymentMethod) = draft.update { it?.copy(method = method) }
+
+    /** Emails a UPI intent to the person who owes this balance. */
+    fun requestSettle() {
+        val d = uiState.value.draft ?: return
+        if (d.amountMinor <= 0 || requestState.value.sending) return
+        if (d.person.id.startsWith("dummy:")) {
+            requestState.value = SettleRequestState(error = "This member is a placeholder and has no email yet")
+            return
+        }
+        viewModelScope.launch {
+            requestState.value = SettleRequestState(sending = true)
+            when (val result = syncRepository.requestSettlement(d.person.id, d.amountMinor)) {
+                is SyncRepository.SettleRequestResult.Sent -> {
+                    requestState.value = SettleRequestState(
+                        message = if (result.status == "sent") {
+                            "Settle request emailed to ${d.person.name}."
+                        } else {
+                            "Email sending isn't configured on the server yet — request logged."
+                        },
+                    )
+                }
+                is SyncRepository.SettleRequestResult.Failure -> {
+                    requestState.value = SettleRequestState(error = result.message)
+                }
+            }
+        }
+    }
 
     fun save(onDone: () -> Unit) {
         val d = uiState.value.draft ?: return
