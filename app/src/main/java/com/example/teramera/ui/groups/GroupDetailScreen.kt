@@ -505,8 +505,8 @@ private fun MembersCard(members: List<com.example.teramera.data.repository.Group
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        if (member.isDummy) "Placeholder · can claim this when they join"
-                        else "Member",
+                        (if (member.isDummy) "Placeholder" else "Member") +
+                            " · ₹${formatInr(member.paidMinor)} spent",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1076,8 +1076,10 @@ private fun EditExpenseDialog(
                 androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) { Text("Keep it") }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    androidx.compose.material3.TextButton(onClick = { confirmDelete = true }) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    if (line?.canDelete == true) {
+                        androidx.compose.material3.TextButton(onClick = { confirmDelete = true }) {
+                            Text("Delete", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                     androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
                 }

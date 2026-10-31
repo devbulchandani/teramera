@@ -10,6 +10,7 @@ import com.example.teramera.data.repository.GroupDetailRepository
 import com.example.teramera.data.sync.SyncRepository
 import com.example.teramera.core.network.CreateSettlementRequestDto
 import com.example.teramera.core.network.GroupDetailDto
+import com.example.teramera.core.network.userMessage
 import com.example.teramera.core.network.LedgerApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.flowOn
@@ -119,6 +120,7 @@ class GroupDetailViewModel @Inject constructor(
                             id = it.id,
                             title = it.title,
                             payerName = memberName(d, it.paidByUserId),
+                            canDelete = it.canDelete,
                             payerCount = it.payerCount,
                             amountMinor = it.amountMinor,
                             myShareMinor = it.myShareMinor,
@@ -146,6 +148,7 @@ class GroupDetailViewModel @Inject constructor(
                             name = it.name,
                             isSelf = it.isSelf,
                             isDummy = it.isDummy,
+                            paidMinor = it.paidMinor,
                         )
                     },
                 )
@@ -156,8 +159,7 @@ class GroupDetailViewModel @Inject constructor(
                     else -> "Server error (${e.code()})"
                 }
             } catch (e: Exception) {
-                remoteError.value = e.message?.takeIf { it.isNotBlank() }
-                    ?: "Couldn't reach the server."
+                remoteError.value = e.userMessage("Couldn't reach the server.")
             } finally {
                 loadingRemote.value = false
             }
@@ -208,7 +210,7 @@ class GroupDetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 settleState.value = settleState.value.copy(
                     busy = false,
-                    error = e.message?.takeIf { it.isNotBlank() } ?: "Couldn't record the payment",
+                    error = e.userMessage("Couldn't record the payment"),
                 )
             }
         }
@@ -238,7 +240,7 @@ class GroupDetailViewModel @Inject constructor(
                 refresh()
                 onDone()
             } catch (e: Exception) {
-                manageState.value = GroupManageState(error = e.message ?: "Couldn't rename group")
+                manageState.value = GroupManageState(error = e.userMessage("Couldn't rename group"))
             }
         }
     }
@@ -253,7 +255,7 @@ class GroupDetailViewModel @Inject constructor(
                 syncRepository.refreshNow()
                 onDone()
             } catch (e: Exception) {
-                manageState.value = GroupManageState(error = e.message ?: "Couldn't delete group")
+                manageState.value = GroupManageState(error = e.userMessage("Couldn't delete group"))
             }
         }
     }
@@ -280,11 +282,11 @@ class GroupDetailViewModel @Inject constructor(
             } catch (e: retrofit2.HttpException) {
                 val message = when {
                     e.code() == 404 -> "No teramera user with that email yet"
-                    else -> e.message()
+                    else -> e.userMessage("Search failed")
                 }
                 addMember.value = AddMemberState(visible = true, error = message)
             } catch (e: Exception) {
-                addMember.value = AddMemberState(visible = true, error = e.message ?: "Search failed")
+                addMember.value = AddMemberState(visible = true, error = e.userMessage("Search failed"))
             }
         }
     }
@@ -305,7 +307,7 @@ class GroupDetailViewModel @Inject constructor(
                     },
                 )
             } catch (e: Exception) {
-                addMember.value = addMember.value.copy(searching = false, error = e.message ?: "Couldn't send invite")
+                addMember.value = addMember.value.copy(searching = false, error = e.userMessage("Couldn't send invite"))
             }
         }
     }
@@ -319,7 +321,7 @@ class GroupDetailViewModel @Inject constructor(
                 syncRepository.refreshNow()
                 refresh()
             } catch (e: Exception) {
-                addMember.value = addMember.value.copy(searching = false, error = e.message ?: "Couldn't add")
+                addMember.value = addMember.value.copy(searching = false, error = e.userMessage("Couldn't add"))
             }
         }
     }
@@ -341,7 +343,7 @@ class GroupDetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 addMember.value = addMember.value.copy(
                     dummyBusy = false,
-                    dummyError = e.message ?: "Couldn't add placeholder",
+                    dummyError = e.userMessage("Couldn't add placeholder"),
                 )
             }
         }
@@ -366,7 +368,7 @@ class GroupDetailViewModel @Inject constructor(
                 refresh()
                 onDone()
             } catch (e: Exception) {
-                claimState.value = ClaimDummyState(error = e.message ?: "Couldn't claim that member")
+                claimState.value = ClaimDummyState(error = e.userMessage("Couldn't claim that member"))
             }
         }
     }
@@ -414,7 +416,7 @@ class GroupDetailViewModel @Inject constructor(
                 refresh()
             } catch (e: Exception) {
                 expenseEdit.value =
-                    expenseEdit.value.copy(busy = false, error = e.message ?: "Couldn't update")
+                    expenseEdit.value.copy(busy = false, error = e.userMessage("Couldn't update"))
             }
         }
     }
@@ -431,7 +433,7 @@ class GroupDetailViewModel @Inject constructor(
                 refresh()
             } catch (e: Exception) {
                 expenseEdit.value =
-                    expenseEdit.value.copy(busy = false, error = e.message ?: "Couldn't delete")
+                    expenseEdit.value.copy(busy = false, error = e.userMessage("Couldn't delete"))
             }
         }
     }

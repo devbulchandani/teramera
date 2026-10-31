@@ -237,6 +237,17 @@ def run_checks():
     check("nets are balanced", nets == {"user-a": 1000, "user-b": -1000}, detail["balances"])
     check("one simplified transfer", len(detail["simplifiedDebts"]) == 1, detail["simplifiedDebts"])
 
+    member_paid = {m["id"]: m.get("paidMinor") for m in detail["members"]}
+    check("member spend is broken down", member_paid == {"user-a": 6000, "user-b": 4000}, member_paid)
+    check("creator can delete own expense", exp.get("canDelete") is True, exp)
+    detail_b = call("GET", f"/groups/{gid}/detail", tok=B)
+    check("other member sees delete disabled", detail_b["expenses"][0].get("canDelete") is False, detail_b["expenses"][0])
+    forbidden = call("DELETE", f"/expenses/{created['id']}", tok=B, expect=403)
+    check("delete 403 includes a reason", "Only the person" in (forbidden.get("message") or ""), forbidden)
+    me = call("GET", "/me")
+    check("me reports total spent", me.get("totalSpentMinor") == 6000, me)
+    check("me reports expense count", me.get("expenseCount") == 1, me)
+
     groups = call("GET", "/groups")
     check("group summary total", groups[0]["totalSpentMinor"] == 10000, groups)
     check("group summary net", groups[0]["netForMeMinor"] == 1000, groups)

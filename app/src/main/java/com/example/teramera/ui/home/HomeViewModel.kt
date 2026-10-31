@@ -26,6 +26,8 @@ data class HomeUiState(
     val selfName: String = "",
     val selfUpiId: String = "",
     val selfPhotoUrl: String? = null,
+    val selfSpentMinor: Long = 0,
+    val selfExpenseCount: Int = 0,
     val profileSaved: Boolean = false,
     val lastSyncAt: Long? = null,
 ) {
@@ -95,7 +97,14 @@ class HomeViewModel @Inject constructor(
                 )
             },
             tokenStore.avatarUrl,
-        ) { state, avatarUrl -> state.copy(selfPhotoUrl = avatarUrl) }
+            tokenStore.stats,
+        ) { state, avatarUrl, stats ->
+            state.copy(
+                selfPhotoUrl = avatarUrl,
+                selfSpentMinor = stats?.totalSpentMinor ?: 0L,
+                selfExpenseCount = stats?.expenseCount ?: 0,
+            )
+        }
             .flowOn(kotlinx.coroutines.Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 

@@ -36,6 +36,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.BuildConfig
+import com.example.teramera.core.network.userMessage
 import com.example.teramera.ui.components.Baanto
 import com.example.teramera.ui.components.BaantoState
 import com.example.teramera.ui.theme.TerameraTheme
@@ -145,7 +146,7 @@ fun LoginScreen(
                             else -> viewModel.googleError("Google sign-in failed — try again.")
                         }
                     } catch (e: Exception) {
-                        viewModel.googleError(e.message ?: "Google sign-in failed")
+                        viewModel.googleError(e.userMessage("Google sign-in failed"))
                     }
                 }
             },

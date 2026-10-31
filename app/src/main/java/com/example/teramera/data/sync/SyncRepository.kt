@@ -4,6 +4,7 @@ import com.example.teramera.core.network.CreateExpenseRequestDto
 import com.example.teramera.core.network.CreateSettlementRequestDto
 import com.example.teramera.core.network.LedgerApi
 import com.example.teramera.core.network.TokenStore
+import com.example.teramera.core.network.userMessage
 import com.example.teramera.data.local.SyncedActivityEntity
 import com.example.teramera.data.local.SyncedBalanceEntity
 import com.example.teramera.data.local.SyncedGroupEntity
@@ -65,6 +66,7 @@ class SyncRepository @Inject constructor(
 
             meDeferred.await()?.let { me ->
                 meLoaded = true
+                tokenStore.saveStats(me.totalSpentMinor, me.expenseCount)
                 // the previous account's "me" row must not survive a sign-in switch
                 dao.clearSelfUsers()
                 dao.insertUser(
@@ -133,7 +135,7 @@ class SyncRepository @Inject constructor(
         _lastSyncAt.value = now
         Result.Success
     } catch (e: Exception) {
-        Result.Failure(e.message ?: "Sync failed")
+        Result.Failure(e.userMessage("Sync failed"))
     }
     }
 
@@ -141,7 +143,7 @@ class SyncRepository @Inject constructor(
         ledgerApi.updateMe(com.example.teramera.core.network.UpdateMeRequestDto(name = name, upiId = upiId))
         refreshNow()
     } catch (e: Exception) {
-        Result.Failure(e.message ?: "Couldn't save profile")
+        Result.Failure(e.userMessage("Couldn't save profile"))
     }
 
     /** Registers an FCM token so expense notifications reach this device. */
@@ -172,7 +174,7 @@ class SyncRepository @Inject constructor(
             )
             refreshNow()
         } catch (e: Exception) {
-            Result.Failure(e.message ?: "Couldn't save to server")
+            Result.Failure(e.userMessage("Couldn't save to server"))
         }
     }
 
@@ -200,7 +202,7 @@ class SyncRepository @Inject constructor(
                 ?: "Couldn't send the settle request"
             SettleRequestResult.Failure(message)
         } catch (e: Exception) {
-            SettleRequestResult.Failure(e.message ?: "Couldn't send the settle request")
+            SettleRequestResult.Failure(e.userMessage("Couldn't send the settle request"))
         }
 
     /** Records a settlement against a counterparty, in whichever direction applies. */
@@ -226,7 +228,7 @@ class SyncRepository @Inject constructor(
             )
             refreshNow()
         } catch (e: Exception) {
-            Result.Failure(e.message ?: "Couldn't save to server")
+            Result.Failure(e.userMessage("Couldn't save to server"))
         }
     }
 }

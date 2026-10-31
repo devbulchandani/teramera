@@ -152,6 +152,8 @@ fun HomeContent(
             netMinor = state.netMinor,
             owedToYouMinor = state.owedToYouMinor,
             youOweMinor = state.youOweMinor,
+            spentMinor = state.selfSpentMinor,
+            expenseCount = state.selfExpenseCount,
             lastSyncAt = state.lastSyncAt,
         )
         SegmentedTabs(
@@ -324,7 +326,14 @@ private fun initialsOfName(name: String): String =
     name.split(" ").filter { it.isNotBlank() }.take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
 
 @Composable
-private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long, lastSyncAt: Long?) {
+private fun HeroCard(
+    netMinor: Long,
+    owedToYouMinor: Long,
+    youOweMinor: Long,
+    spentMinor: Long,
+    expenseCount: Int,
+    lastSyncAt: Long?,
+) {
     val ink = MaterialTheme.colorScheme.inverseSurface
     val cream = MaterialTheme.colorScheme.inverseOnSurface
 
@@ -387,6 +396,23 @@ private fun HeroCard(netMinor: Long, owedToYouMinor: Long, youOweMinor: Long, la
                 HeroChip(
                     label = "You owe ₹${formatInr(youOweMinor)}",
                     tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "You've spent ₹${formatInr(spentMinor)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cream.copy(alpha = 0.78f),
+                )
+                Text(
+                    "$expenseCount ${if (expenseCount == 1) "expense" else "expenses"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cream.copy(alpha = 0.55f),
                 )
             }
             if (lastSyncAt != null) {

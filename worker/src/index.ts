@@ -339,12 +339,21 @@ app.post("/auth/logout", async (c) => {
 app.get("/me", async (c) => {
     const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", c.get("userId"));
     if (!user) return jsonError(c, 404, "User not found");
+    const [spend] = await rows<Row>(
+        c,
+        `SELECT COALESCE(SUM(amount_minor), 0) AS total,
+                COUNT(DISTINCT COALESCE(parent_id, id)) AS count
+           FROM expenses WHERE paid_by_user_id = ?`,
+        user.id,
+    );
     return c.json({
         id: user.id,
         phone: user.phone ?? "",
         email: user.email ?? "",
         name: user.name ?? "",
         upiId: user.upi_id ?? "",
+        totalSpentMinor: Number(spend?.total ?? 0),
+        expenseCount: Number(spend?.count ?? 0),
     });
 });
 
@@ -762,12 +771,19 @@ app.get("/groups/:groupId/detail", async (c) => {
          WHERE m.group_id = ?`,
         groupId,
     );
+    const paidRows = await rows<Row>(
+        c,
+        "SELECT paid_by_user_id AS uid, SUM(amount_minor) AS total FROM expenses WHERE group_id = ? GROUP BY paid_by_user_id",
+        groupId,
+    );
+    const paidBy = new Map(paidRows.map((r) => [r.uid, Number(r.total)]));
     const members = memberRows.map((u) => ({
         id: u.id,
         name: u.name ?? "?",
         isSelf: u.id === userId,
         isDummy: typeof u.id === "string" && u.id.startsWith("dummy:"),
         upiId: u.upi_id ?? "",
+        paidMinor: paidBy.get(u.id) ?? 0,
     }));
     const nameById = new Map(memberRows.map((u) => [u.id, u.name ?? "?"]));
 
@@ -803,6 +819,7 @@ app.get("/groups/:groupId/detail", async (c) => {
             parentId,
             title: first.title,
             paidByUserId: first.paid_by_user_id,
+            canDelete: (first.created_by ?? first.paid_by_user_id) === userId,
             payerCount: payers.size,
             splitType: first.split_type,
             amountMinor: logicalRows.reduce((acc, row) => acc + row.amount_minor, 0),
@@ -874,6 +891,7 @@ app.get("/groups/:groupId/expenses", async (c) => {
             parentId,
             title: first.title,
             paidByUserId: first.paid_by_user_id,
+            canDelete: (first.created_by ?? first.paid_by_user_id) === userId,
             payerCount: new Set(logicalRows.map((row) => row.paid_by_user_id)).size,
             amountMinor: logicalRows.reduce((acc, row) => acc + row.amount_minor, 0),
             myShareMinor: logicalShares
@@ -992,11 +1010,11 @@ app.post("/expenses", async (c) => {
             : allocatePayment(payment.amountMinor);
         await run(
             c,
-            `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at, parent_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at, parent_id, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id, body.groupId ?? null, payment.userId, body.title.trim(),
             payment.amountMinor, body.splitType, body.currency ?? "INR",
-            body.fxRateToGroup ?? 1.0, createdAt, parentId,
+            body.fxRateToGroup ?? 1.0, createdAt, parentId, userId,
         );
         for (const [uid, minor] of allocation.entries()) {
             if (minor > 0) {
@@ -1045,10 +1063,12 @@ app.patch("/expenses/:expenseId", async (c) => {
     const siblings = await rows<Row>(c, "SELECT * FROM expenses WHERE parent_id = ?", expense.parent_id);
     const [first] = await rows<Row>(
         c,
-        "SELECT paid_by_user_id FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
+        "SELECT paid_by_user_id, created_by FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
         expense.parent_id,
     );
-    if (first?.paid_by_user_id !== userId) return jsonError(c, 403, "Only the person who added this expense can edit it");
+    if ((expense.created_by ?? first?.created_by ?? first?.paid_by_user_id) !== userId) {
+        return jsonError(c, 403, "Only the person who added this expense can edit it");
+    }
 
     const body = await c.req.json<{
         title?: string;
@@ -1174,12 +1194,14 @@ app.delete("/expenses/:expenseId", async (c) => {
 
     if (expense.parent_id == null) return jsonError(c, 409, "Expense is missing its parent link and cannot be deleted");
     if (expense.group_id) await requireMember(c, expense.group_id, userId);
-    const [creator] = await rows<Row>(
+    const [first] = await rows<Row>(
         c,
-        "SELECT paid_by_user_id FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
+        "SELECT paid_by_user_id, created_by FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
         expense.parent_id,
     );
-    if (creator?.paid_by_user_id !== userId) return jsonError(c, 403, "Only the person who added this expense can delete it");
+    if ((expense.created_by ?? first?.created_by ?? first?.paid_by_user_id) !== userId) {
+        return jsonError(c, 403, "Only the person who added this expense can delete it");
+    }
     const siblings = await rows<Row>(c, "SELECT id FROM expenses WHERE parent_id = ?", expense.parent_id);
 
     for (const sib of siblings) {

@@ -61,10 +61,19 @@ data class MemberDto(
     val isSelf: Boolean,
     val isDummy: Boolean = false,
     val upiId: String? = null,
+    val paidMinor: Long = 0,
 )
 data class AddDummyMemberRequestDto(val name: String)
 data class ClaimDummyRequestDto(val dummyUserId: String)
-data class MeDto(val id: String, val phone: String?, val email: String?, val name: String?, val upiId: String?)
+data class MeDto(
+    val id: String,
+    val phone: String?,
+    val email: String?,
+    val name: String?,
+    val upiId: String?,
+    val totalSpentMinor: Long = 0,
+    val expenseCount: Int = 0,
+)
 data class UpdateMeRequestDto(val name: String? = null, val upiId: String? = null)
 data class ActivityEventDto(
     val type: String,
@@ -93,6 +102,7 @@ data class GroupExpenseDto(
     val parentId: String? = null,
     val title: String,
     val paidByUserId: String,
+    val canDelete: Boolean = false,
     val payerCount: Int = 1,
     val amountMinor: Long,
     val myShareMinor: Long,

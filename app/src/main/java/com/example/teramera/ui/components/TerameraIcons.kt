@@ -47,19 +47,20 @@ fun GroupsIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
         val s = this.size.width / 24f
         val w = 1.75f * s
         fun c(x: Float, y: Float) = Offset(x * s, y * s)
-        // Two Baanto coins, the smaller one tucked behind the front face.
-        drawCircle(tint, radius = 5.5f * s, center = c(8.5f, 10.8f), style = Stroke(w, cap = StrokeCap.Round))
-        drawCircle(tint, radius = 6f * s, center = c(15f, 13.2f), style = Stroke(w, cap = StrokeCap.Round))
-        drawCircle(tint, radius = 1.1f * s, center = c(13f, 12.2f))
-        drawCircle(tint, radius = 1.1f * s, center = c(17f, 12.2f))
+        // Three mascot coins in a cluster: two behind, one front with a face.
+        drawCircle(tint, radius = 3.5f * s, center = c(7.5f, 8.5f), style = Stroke(w, cap = StrokeCap.Round))
+        drawCircle(tint, radius = 3.5f * s, center = c(16.5f, 8.5f), style = Stroke(w, cap = StrokeCap.Round))
+        drawCircle(tint, radius = 5.2f * s, center = c(12f, 15f), style = Stroke(w, cap = StrokeCap.Round))
+        drawCircle(tint, radius = 0.9f * s, center = c(10.4f, 14.2f))
+        drawCircle(tint, radius = 0.9f * s, center = c(13.6f, 14.2f))
         drawArc(
             color = tint,
             startAngle = 20f,
             sweepAngle = 140f,
             useCenter = false,
-            topLeft = c(12.7f, 13.8f),
-            size = Size(4.6f * s, 3.2f * s),
-            style = Stroke(1.5f * s, cap = StrokeCap.Round),
+            topLeft = c(10.1f, 15.4f),
+            size = Size(3.8f * s, 2.6f * s),
+            style = Stroke(1.4f * s, cap = StrokeCap.Round),
         )
     }
 }

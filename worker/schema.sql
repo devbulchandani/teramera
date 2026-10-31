@@ -54,7 +54,9 @@ CREATE TABLE IF NOT EXISTS expenses (
     currency TEXT NOT NULL DEFAULT 'INR',
     fx_rate_to_group REAL NOT NULL DEFAULT 1.0,
     created_at INTEGER NOT NULL,
-    parent_id TEXT
+    parent_id TEXT,
+    -- who added the expense (may differ from the payer in multi-payer rows)
+    created_by TEXT REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS expense_shares (

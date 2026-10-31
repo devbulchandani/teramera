@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.teramera.core.network.CreateExpenseRequestDto
 import com.example.teramera.core.network.LedgerApi
 import com.example.teramera.core.network.MemberDto
+import com.example.teramera.core.network.userMessage
 import com.example.teramera.core.network.PaymentDto
 import com.example.teramera.core.network.TokenStore
 import com.example.teramera.data.local.GroupEntity
@@ -233,7 +234,7 @@ class AddExpenseViewModel @Inject constructor(
                 friendSearch.value = FriendSearchState(
                     query = email,
                     found = friendSearch.value.found,
-                    error = e.message ?: "Couldn't reach the server",
+                    error = e.userMessage("Couldn't reach the server"),
                 )
             }
         }
@@ -329,7 +330,7 @@ class AddExpenseViewModel @Inject constructor(
             true
         } catch (e: Exception) {
             serverMembers.value = emptyList()
-            memberLoad.value = MemberLoad(error = e.message ?: "Couldn't load group members")
+            memberLoad.value = MemberLoad(error = e.userMessage("Couldn't load group members"))
             false
         }
     }
@@ -499,7 +500,7 @@ class AddExpenseViewModel @Inject constructor(
                     saveState.value = SaveState()
                     onDone()
                 } catch (e: Exception) {
-                    saveState.value = SaveState(error = e.message ?: "Couldn't reach the server")
+                    saveState.value = SaveState(error = e.userMessage("Couldn't reach the server"))
                 }
                 return@launch
             }

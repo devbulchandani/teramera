@@ -10,6 +10,7 @@ data class ExpenseLine(
     val id: String,
     val title: String,
     val payerName: String,
+    val canDelete: Boolean = true,
     val payerCount: Int = 1,
     val amountMinor: Long,
     val myShareMinor: Long,
@@ -27,6 +28,7 @@ data class GroupMember(
     val name: String,
     val isSelf: Boolean,
     val isDummy: Boolean,
+    val paidMinor: Long = 0,
 )
 
 data class DebtTransfer(

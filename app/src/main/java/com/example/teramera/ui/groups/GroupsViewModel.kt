@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.teramera.core.network.CreateGroupRequestDto
 import com.example.teramera.core.network.LedgerApi
+import com.example.teramera.core.network.userMessage
 import com.example.teramera.data.repository.HomeRepository
 import com.example.teramera.data.sync.SyncRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -50,7 +51,7 @@ class GroupsViewModel @Inject constructor(
                 creation.value = false to null
                 onCreated(created.id)
             } catch (e: Exception) {
-                creation.value = false to (e.message ?: "Couldn't create group")
+                creation.value = false to e.userMessage("Couldn't create group")
             }
         }
     }

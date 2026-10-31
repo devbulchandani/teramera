@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -17,6 +19,8 @@ private val Context.tokenDataStore: DataStore<Preferences> by preferencesDataSto
 
 data class AuthTokens(val accessToken: String, val refreshToken: String, val userId: String)
 
+data class SpendStats(val totalSpentMinor: Long, val expenseCount: Int)
+
 @Singleton
 class TokenStore @Inject constructor(@ApplicationContext private val context: Context) {
 
@@ -24,6 +28,8 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
     private val refreshKey = stringPreferencesKey("refresh_token")
     private val userIdKey = stringPreferencesKey("user_id")
     private val avatarKey = stringPreferencesKey("avatar_url")
+    private val totalSpentKey = longPreferencesKey("total_spent_minor")
+    private val expenseCountKey = intPreferencesKey("expense_count")
 
     val tokens: Flow<AuthTokens?> = context.tokenDataStore.data.map { prefs ->
         val access = prefs[accessKey] ?: return@map null
@@ -33,6 +39,19 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
 
     /** Profile picture URL from the Google account, when the provider returns one. */
     val avatarUrl: Flow<String?> = context.tokenDataStore.data.map { it[avatarKey] }
+
+    /** Lifetime spend summary from `/me`, used on the home hero. */
+    val stats: Flow<SpendStats?> = context.tokenDataStore.data.map { prefs ->
+        val total = prefs[totalSpentKey] ?: return@map null
+        SpendStats(total, prefs[expenseCountKey] ?: 0)
+    }
+
+    suspend fun saveStats(totalSpentMinor: Long, expenseCount: Int) {
+        context.tokenDataStore.edit { prefs ->
+            prefs[totalSpentKey] = totalSpentMinor
+            prefs[expenseCountKey] = expenseCount
+        }
+    }
 
     /**
      * [clearAvatar] is only true on a fresh sign-in: a token refresh must not
@@ -50,6 +69,11 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
             when {
                 !avatarUrl.isNullOrBlank() -> prefs[avatarKey] = avatarUrl
                 clearAvatar -> prefs.remove(avatarKey)
+            }
+            // Stats belong to the account, never leak across a sign-in switch.
+            if (clearAvatar) {
+                prefs.remove(totalSpentKey)
+                prefs.remove(expenseCountKey)
             }
         }
     }
