@@ -1,5 +1,6 @@
 package com.example.teramera.ui.groups
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,12 +81,20 @@ fun GroupsScreen(
         }
 
         state.error?.let {
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = viewModel::refresh, enabled = !state.refreshing) {
+                    Text(if (state.refreshing) "Retrying…" else "Retry")
+                }
+            }
         }
 
         LazyColumn(
@@ -96,12 +106,20 @@ fun GroupsScreen(
             }
             if (state.groups.isEmpty()) {
                 item {
-                    EmptyState(
-                        title = "No groups yet",
-                        message = "Create a group and invite the people you split with.",
-                        actionLabel = "New group",
-                        onAction = { showCreate = true },
-                    )
+                    if (state.refreshing && !state.loaded) {
+                        LoadingGroups()
+                    } else {
+                        EmptyState(
+                            title = "No groups yet",
+                            message = if (state.error != null) {
+                                "Couldn't load your groups. Retry above, or create one."
+                            } else {
+                                "Create a group and invite the people you split with."
+                            },
+                            actionLabel = "New group",
+                            onAction = { showCreate = true },
+                        )
+                    }
                 }
             }
         }
@@ -122,11 +140,30 @@ fun GroupsScreen(
 }
 
 @Composable
+private fun LoadingGroups() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 44.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Baanto(state = BaantoState.Thinking, size = 88.dp, animate = true)
+        Text(
+            "Loading groups…",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+}
+
+@Composable
 private fun GroupCard(group: BalanceEntry, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize()
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)

@@ -1,5 +1,6 @@
 package com.example.teramera.ui.activity
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -134,6 +135,7 @@ private fun SpendByMonthCard(spend: SpendSnapshot) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize()
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surface)
             .padding(16.dp),

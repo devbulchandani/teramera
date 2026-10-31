@@ -1,5 +1,17 @@
 package com.example.teramera.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
@@ -318,7 +331,11 @@ private fun MainApp(
             }
         },
         floatingActionButton = {
-            if (!onGroupDetail && (currentRoute == Routes.HOME || currentRoute == Routes.GROUPS)) {
+            AnimatedVisibility(
+                visible = !onGroupDetail && (currentRoute == Routes.HOME || currentRoute == Routes.GROUPS),
+                enter = fadeIn(tween(180)) + scaleIn(tween(240), initialScale = 0.85f),
+                exit = fadeOut(tween(140)) + scaleOut(tween(180), targetScale = 0.85f),
+            ) {
                 AddExpenseFab(
                     onClick = {
                         // a group picked by an earlier group-screen add must not leak in
@@ -333,6 +350,18 @@ private fun MainApp(
             navController = navController,
             startDestination = Routes.HOME,
             modifier = Modifier.padding(innerPadding),
+            enterTransition = {
+                fadeIn(tween(220)) + slideInHorizontally(tween(280)) { it / 12 }
+            },
+            exitTransition = {
+                fadeOut(tween(160)) + slideOutHorizontally(tween(240)) { -it / 12 }
+            },
+            popEnterTransition = {
+                fadeIn(tween(220)) + slideInHorizontally(tween(280)) { -it / 12 }
+            },
+            popExitTransition = {
+                fadeOut(tween(160)) + slideOutHorizontally(tween(240)) { it / 12 }
+            },
         ) {
             composable(Routes.HOME) {
                 HomeScreen(
@@ -349,7 +378,15 @@ private fun MainApp(
             composable(Routes.GROUPS) {
                 GroupsScreen(onOpenGroup = { groupId -> navController.navigate(Routes.groupDetail(groupId)) })
             }
-            composable(Routes.GROUP_DETAIL) { entry ->
+            composable(
+                Routes.GROUP_DETAIL,
+                enterTransition = {
+                    fadeIn(tween(180)) + slideInHorizontally(tween(300)) { it }
+                },
+                popExitTransition = {
+                    fadeOut(tween(160)) + slideOutHorizontally(tween(260)) { it }
+                },
+            ) { entry ->
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val detailGroupId = entry.arguments?.getString("groupId")
                 GroupDetailScreen(
@@ -415,6 +452,19 @@ private fun FloatingNav(
         ) {
             items.forEach { item ->
                 val selected = isSelected(item.route)
+                val tint by animateColorAsState(
+                    targetValue = if (selected) MaterialTheme.colorScheme.primary else inactive,
+                    animationSpec = tween(220),
+                    label = "navTint",
+                )
+                val iconScale by animateFloatAsState(
+                    targetValue = if (selected) 1.12f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    label = "navIconScale",
+                )
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -431,12 +481,12 @@ private fun FloatingNav(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        item.icon(if (selected) MaterialTheme.colorScheme.primary else inactive)
+                        Box(Modifier.scale(iconScale)) { item.icon(tint) }
                         Spacer(Modifier.height(3.dp))
                         Text(
                             item.label,
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (selected) MaterialTheme.colorScheme.primary else inactive,
+                            color = tint,
                             maxLines = 1,
                         )
                     }

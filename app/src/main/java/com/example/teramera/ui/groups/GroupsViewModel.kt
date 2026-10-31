@@ -15,11 +15,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 data class GroupsUiState(
     val groups: List<com.example.teramera.data.repository.BalanceEntry> = emptyList(),
     val creating: Boolean = false,
+    val refreshing: Boolean = false,
+    val loaded: Boolean = false,
     val error: String? = null,
 )
 
@@ -31,14 +34,51 @@ class GroupsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val creation = MutableStateFlow(Pair(false, null as String?))
+    private data class RefreshState(
+        val refreshing: Boolean = false,
+        val loaded: Boolean = false,
+        val error: String? = null,
+    )
+    private val refreshState = MutableStateFlow(RefreshState())
 
     val uiState: StateFlow<GroupsUiState> =
-        combine(homeRepository.homeData(), homeRepository.syncedHomeData(), creation) { local, synced, (busy, error) ->
+        combine(
+            homeRepository.homeData(),
+            homeRepository.syncedHomeData(),
+            creation,
+            refreshState,
+        ) { local, synced, (busy, createError), refresh ->
             val chosen = synced ?: local
-            GroupsUiState(groups = chosen.groups, creating = busy, error = error)
+            GroupsUiState(
+                groups = chosen.groups,
+                creating = busy,
+                refreshing = refresh.refreshing,
+                loaded = refresh.loaded || chosen.groups.isNotEmpty(),
+                error = createError ?: refresh.error,
+            )
         }
             .flowOn(kotlinx.coroutines.Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GroupsUiState())
+
+    init { refresh() }
+
+    /** Explicit recovery path when the first sync never landed. */
+    fun refresh() {
+        if (refreshState.value.refreshing) return
+        viewModelScope.launch {
+            refreshState.value = RefreshState(refreshing = true, loaded = refreshState.value.loaded)
+            val result = withTimeoutOrNull(25_000) { syncRepository.refreshNow() }
+            refreshState.value = RefreshState(
+                refreshing = false,
+                loaded = true,
+                error = when (result) {
+                    null -> "Loading timed out. Check your connection and try again."
+                    is SyncRepository.Result.Failure -> result.message
+                    is SyncRepository.Result.Success -> null
+                },
+            )
+        }
+    }
 
     fun createGroup(name: String, onCreated: (String) -> Unit) {
         val trimmed = name.trim()

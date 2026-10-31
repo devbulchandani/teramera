@@ -30,6 +30,7 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
     private val avatarKey = stringPreferencesKey("avatar_url")
     private val totalSpentKey = longPreferencesKey("total_spent_minor")
     private val expenseCountKey = intPreferencesKey("expense_count")
+    private val cacheEpochKey = intPreferencesKey("cache_epoch")
 
     val tokens: Flow<AuthTokens?> = context.tokenDataStore.data.map { prefs ->
         val access = prefs[accessKey] ?: return@map null
@@ -51,6 +52,13 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
             prefs[totalSpentKey] = totalSpentMinor
             prefs[expenseCountKey] = expenseCount
         }
+    }
+
+    /** Local cache schema marker — bumping it wipes stale synced rows once. */
+    suspend fun cacheEpoch(): Int = context.tokenDataStore.data.first()[cacheEpochKey] ?: 0
+
+    suspend fun setCacheEpoch(epoch: Int) {
+        context.tokenDataStore.edit { it[cacheEpochKey] = epoch }
     }
 
     /**

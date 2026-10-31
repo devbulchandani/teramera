@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 data class GroupDetailUiState(
@@ -106,7 +107,11 @@ class GroupDetailViewModel @Inject constructor(
                 return@launch
             }
             try {
-                val d = ledgerApi.groupDetail(groupId)
+                val d = withTimeoutOrNull(25_000) { ledgerApi.groupDetail(groupId) }
+                if (d == null) {
+                    remoteError.value = "Loading timed out. Check your connection and try again."
+                    return@launch
+                }
                 val selfId = syncRepository.selfUserId().orEmpty()
                 remote.value = GroupDetail(
                     groupId = d.id,
@@ -252,6 +257,7 @@ class GroupDetailViewModel @Inject constructor(
             try {
                 ledgerApi.deleteGroup(groupId)
                 manageState.value = GroupManageState()
+                syncRepository.purgeDeletedGroup(groupId)
                 syncRepository.refreshNow()
                 onDone()
             } catch (e: Exception) {

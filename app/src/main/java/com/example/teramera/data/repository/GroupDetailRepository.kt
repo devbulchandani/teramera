@@ -2,6 +2,7 @@ package com.example.teramera.data.repository
 
 import com.example.teramera.data.local.TerameraDao
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -66,11 +67,11 @@ class GroupDetailRepository @Inject constructor(
 ) {
     fun groupDetail(groupId: String, selfId: String = "u_dev"): Flow<GroupDetail?> =
         combine(
-            dao.users(),
-            dao.groups(),
-            dao.membershipsForGroup(groupId),
-            dao.expensesForGroup(groupId),
-            dao.sharesForGroup(groupId),
+            dao.users().safe(emptyList()),
+            dao.groups().safe(emptyList()),
+            dao.membershipsForGroup(groupId).safe(emptyList()),
+            dao.expensesForGroup(groupId).safe(emptyList()),
+            dao.sharesForGroup(groupId).safe(emptyList()),
         ) { users, groups, members, expenses, shares ->
             val group = groups.firstOrNull { it.id == groupId } ?: return@combine null
             val usersById = users.associateBy { it.id }
@@ -124,6 +125,9 @@ class GroupDetailRepository @Inject constructor(
             )
         }
 }
+
+/** A corrupt/migrating Room table must not freeze a whole screen at Loading. */
+private fun <T> Flow<T>.safe(default: T): Flow<T> = catch { emit(default) }
 
 internal fun initials(name: String): String =
     name.split(" ").filter { it.isNotBlank() }.take(2).map { it.first().uppercaseChar() }.joinToString("")

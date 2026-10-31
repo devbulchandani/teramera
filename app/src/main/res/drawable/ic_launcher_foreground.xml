@@ -1,17 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Foreground: violet lower-right half + warm-white divider stripe.
-     Background layer is solid teal → masked circle reads as the tere|mera split. -->
+<!-- Baanto coin: peach tere half, mint mera half, cream ring, ink face. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- warm white divider stripe -->
     <path
-        android:fillColor="#FBF9F4"
-        android:pathData="M112.5,0 L0,112.5 L0,103.5 L103.5,0 Z" />
-    <!-- violet half (tere) -->
+        android:fillColor="#F1AB88"
+        android:pathData="M54,25 A29,29 0 1,1 53.99,25 Z" />
     <path
-        android:fillColor="#825EA9"
-        android:pathData="M112.5,0 L108,0 L108,108 L0,108 L0,112.5 Z" />
+        android:fillColor="#78C1B7"
+        android:pathData="M54,25 A29,29 0 0,1 54,83 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FAF7F2"
+        android:strokeWidth="3"
+        android:pathData="M54,25 A29,29 0 1,1 53.99,25" />
+    <path
+        android:fillColor="#121220"
+        android:pathData="M45,49 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path
+        android:fillColor="#121220"
+        android:pathData="M63,49 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#121220"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M45,62 Q54,70 63,62" />
 </vector>

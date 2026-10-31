@@ -190,6 +190,9 @@ interface TerameraDao {
     @Query("DELETE FROM synced_groups")
     suspend fun clearSyncedGroups()
 
+    @Query("DELETE FROM synced_groups WHERE id = :groupId")
+    suspend fun deleteSyncedGroup(groupId: String)
+
     @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
     suspend fun insertSyncedGroups(groups: List<SyncedGroupEntity>)
 

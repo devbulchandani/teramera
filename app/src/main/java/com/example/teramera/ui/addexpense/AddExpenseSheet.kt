@@ -1,5 +1,14 @@
 package com.example.teramera.ui.addexpense
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -107,10 +117,23 @@ fun AddExpenseSheet(
                 onSelectGroup = viewModel::setGroup,
             )
 
-            when (draft.step) {
-                1 -> AmountStep(state, viewModel)
-                2 -> DetailsStep(state, viewModel)
-                else -> ReviewStep(state, viewModel, onSaved = onDismiss)
+            AnimatedContent(
+                targetState = draft.step,
+                transitionSpec = {
+                    val direction = if (targetState > initialState) 1 else -1
+                    (slideInHorizontally(tween(260)) { direction * it / 5 } + fadeIn(tween(180))) togetherWith
+                        (slideOutHorizontally(tween(220)) { -direction * it / 5 } + fadeOut(tween(140)))
+                },
+                modifier = Modifier.weight(1f),
+                label = "expenseStep",
+            ) { step ->
+                Column(Modifier.fillMaxSize()) {
+                    when (step) {
+                        1 -> AmountStep(state, viewModel)
+                        2 -> DetailsStep(state, viewModel)
+                        else -> ReviewStep(state, viewModel, onSaved = onDismiss)
+                    }
+                }
             }
         }
     }
@@ -230,15 +253,23 @@ private fun ProgressPills(step: Int, modifier: Modifier = Modifier) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         repeat(3) { index ->
             val active = index + 1 == step
+            val width by animateDpAsState(
+                targetValue = if (active) 38.dp else 26.dp,
+                animationSpec = tween(220),
+                label = "progressWidth",
+            )
+            val color by animateColorAsState(
+                targetValue = if (active) MaterialTheme.colorScheme.primary
+                else Paper100.copy(alpha = 0.18f),
+                animationSpec = tween(220),
+                label = "progressColor",
+            )
             Box(
                 Modifier
-                    .width(if (active) 38.dp else 26.dp)
+                    .width(width)
                     .height(5.dp)
                     .clip(CircleShape)
-                    .background(
-                        if (active) MaterialTheme.colorScheme.primary
-                        else Paper100.copy(alpha = 0.18f)
-                    ),
+                    .background(color),
             )
         }
     }

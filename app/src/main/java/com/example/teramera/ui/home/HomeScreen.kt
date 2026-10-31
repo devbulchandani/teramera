@@ -1,6 +1,10 @@
 package com.example.teramera.ui.home
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -159,7 +164,6 @@ fun HomeContent(
             thisMonthCount = state.thisMonthExpenseCount,
             lastMonthMinor = state.lastMonthSpentMinor,
             totalMinor = state.selfSpentMinor,
-            months = state.spendMonths,
         )
         SegmentedTabs(
             tabs = HomeTab.entries.map { it.label },
@@ -339,6 +343,7 @@ private fun HeroCard(
 ) {
     val ink = MaterialTheme.colorScheme.inverseSurface
     val cream = MaterialTheme.colorScheme.inverseOnSurface
+    val shownNet = animatedMinor(kotlin.math.abs(netMinor))
 
     Box(
         modifier = Modifier
@@ -386,7 +391,7 @@ private fun HeroCard(
                 )
                 Spacer(Modifier.width(2.dp))
                 Text(
-                    text = formatInr(kotlin.math.abs(netMinor)),
+                    text = formatInr(shownNet),
                     style = MaterialTheme.typography.displayLarge,
                     color = cream,
                 )
@@ -419,17 +424,19 @@ private fun SpendSummaryCard(
     thisMonthCount: Int,
     lastMonthMinor: Long,
     totalMinor: Long,
-    months: List<com.example.teramera.core.stats.MonthSpend>,
 ) {
     Column(
         modifier = Modifier
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
             .fillMaxWidth()
+            .animateContentSize()
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surface)
-            .padding(18.dp),
+            .padding(16.dp),
     ) {
-        Row(verticalAlignment = Alignment.Top) {
+        val shownThisMonth = animatedMinor(thisMonthMinor)
+        val shownTotal = animatedMinor(totalMinor)
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
                     "This month",
@@ -439,90 +446,43 @@ private fun SpendSummaryCard(
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         "₹",
-                        style = MaterialTheme.typography.displayMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        formatInr(thisMonthMinor),
-                        style = MaterialTheme.typography.displayMedium,
+                        formatInr(shownThisMonth),
+                        style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
                 Text(
-                    "$thisMonthCount ${if (thisMonthCount == 1) "expense" else "expenses"} · " +
-                        "₹${formatInr(totalMinor)} all time",
+                    "$thisMonthCount ${if (thisMonthCount == 1) "expense" else "expenses"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = 1.dp),
                 )
             }
-            if (months.isNotEmpty()) {
-                SpendBars(
-                    months = months,
-                    modifier = Modifier
-                        .width(112.dp)
-                        .height(52.dp),
-                )
-            }
-        }
-        if (lastMonthMinor > 0) {
-            Text(
-                "vs ₹${formatInr(lastMonthMinor)} last month",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 10.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SpendBars(
-    months: List<com.example.teramera.core.stats.MonthSpend>,
-    modifier: Modifier = Modifier,
-) {
-    val recent = months.take(6).reversed()
-    val max = recent.maxOfOrNull { it.spentMinor }?.coerceAtLeast(1L) ?: 1L
-    val currentKey = months.firstOrNull()?.month
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        recent.forEach { month ->
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier.height(34.dp),
-                    contentAlignment = Alignment.BottomCenter,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(12.dp)
-                            .height((34f * (month.spentMinor.toFloat() / max)).coerceAtLeast(3f).dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                if (month.month == currentKey) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outlineVariant
-                            ),
-                    )
-                }
+            Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    monthShort(month.month),
-                    style = MaterialTheme.typography.labelSmall,
+                    "All time",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    "₹${formatInr(shownTotal)}",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (lastMonthMinor > 0) {
+                    Text(
+                        "vs ₹${formatInr(lastMonthMinor)} last month",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 3.dp),
+                    )
+                }
             }
         }
     }
-}
-
-private val MONTH_SHORT = arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-private fun monthShort(key: String): String {
-    val month = key.substringAfter('-').toIntOrNull() ?: return ""
-    return MONTH_SHORT.getOrElse(month - 1) { "" }
 }
 
 @Composable
@@ -575,6 +535,7 @@ private fun BalanceCard(entries: List<BalanceEntry>, onOpen: (BalanceEntry) -> U
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize()
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 16.dp),
@@ -666,6 +627,18 @@ internal fun Avatar(initials: String, isViolet: Boolean, size: androidx.compose.
             color = Ink900,
         )
     }
+}
+
+@Composable
+private fun animatedMinor(target: Long): Long {
+    val value = remember { Animatable(0f) }
+    LaunchedEffect(target) {
+        value.animateTo(
+            targetValue = target.toFloat(),
+            animationSpec = tween(650, easing = FastOutSlowInEasing),
+        )
+    }
+    return value.value.toLong()
 }
 
 @Composable
