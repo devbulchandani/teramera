@@ -276,7 +276,7 @@ interface TerameraDao {
         SyncedGroupEntity::class,
         SyncedActivityEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class TerameraDatabase : RoomDatabase() {

@@ -123,6 +123,7 @@ fun GroupDetailScreen(
                 ),
                 modifier = Modifier.height(52.dp),
             ) { Text("Try again", style = MaterialTheme.typography.labelLarge) }
+            TextButton(onClick = onBack) { Text("Back to groups") }
         }
         return
     }

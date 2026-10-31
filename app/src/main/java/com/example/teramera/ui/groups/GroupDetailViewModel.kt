@@ -160,7 +160,10 @@ class GroupDetailViewModel @Inject constructor(
             } catch (e: retrofit2.HttpException) {
                 remoteError.value = when (e.code()) {
                     403 -> "You're not a member of this group."
-                    404 -> "This group no longer exists."
+                    404 -> {
+                        syncRepository.removeLocalGroup(groupId)
+                        "This group no longer exists. It has been removed from your list."
+                    }
                     else -> "Server error (${e.code()})"
                 }
             } catch (e: Exception) {

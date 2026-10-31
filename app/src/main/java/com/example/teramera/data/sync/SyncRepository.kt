@@ -26,7 +26,7 @@ class SyncRepository @Inject constructor(
 ) {
     private companion object {
         // Bump when local rollups may contain rows from deleted groups.
-        const val CACHE_EPOCH = 1
+        const val CACHE_EPOCH = 2
     }
     sealed interface Result {
         data object Success : Result
@@ -65,6 +65,8 @@ class SyncRepository @Inject constructor(
         if (tokenStore.cacheEpoch() < CACHE_EPOCH) {
             // One-time cleanup for installs that still hold activity/spend from
             // groups deleted before the server-side purge existed.
+            dao.clearSyncedBalances()
+            dao.clearSyncedGroups()
             dao.clearSyncedActivity()
             spendStore.clear()
             tokenStore.setCacheEpoch(CACHE_EPOCH)
@@ -170,6 +172,11 @@ class SyncRepository @Inject constructor(
     } catch (e: Exception) {
         Result.Failure(e.userMessage("Sync failed"))
     }
+    }
+
+    /** Remove a group row that the server says no longer exists. */
+    suspend fun removeLocalGroup(groupId: String) {
+        dao.deleteSyncedGroup(groupId)
     }
 
     /** Drop local traces of a group the moment the server confirms deletion. */

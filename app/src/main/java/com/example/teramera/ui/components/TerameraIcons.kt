@@ -47,21 +47,10 @@ fun GroupsIcon(modifier: Modifier = Modifier, tint: Color, size: Dp = 24.dp) {
         val s = this.size.width / 24f
         val w = 1.75f * s
         fun c(x: Float, y: Float) = Offset(x * s, y * s)
-        // Three mascot coins in a cluster: two behind, one front with a face.
-        drawCircle(tint, radius = 3.5f * s, center = c(7.5f, 8.5f), style = Stroke(w, cap = StrokeCap.Round))
-        drawCircle(tint, radius = 3.5f * s, center = c(16.5f, 8.5f), style = Stroke(w, cap = StrokeCap.Round))
-        drawCircle(tint, radius = 5.2f * s, center = c(12f, 15f), style = Stroke(w, cap = StrokeCap.Round))
-        drawCircle(tint, radius = 0.9f * s, center = c(10.4f, 14.2f))
-        drawCircle(tint, radius = 0.9f * s, center = c(13.6f, 14.2f))
-        drawArc(
-            color = tint,
-            startAngle = 20f,
-            sweepAngle = 140f,
-            useCenter = false,
-            topLeft = c(10.1f, 15.4f),
-            size = Size(3.8f * s, 2.6f * s),
-            style = Stroke(1.4f * s, cap = StrokeCap.Round),
-        )
+        // Three simple coins in a cluster — no face, no generic people glyph.
+        drawCircle(tint, radius = 4.2f * s, center = c(7f, 9f), style = Stroke(w, cap = StrokeCap.Round))
+        drawCircle(tint, radius = 4.2f * s, center = c(17f, 9f), style = Stroke(w, cap = StrokeCap.Round))
+        drawCircle(tint, radius = 4.8f * s, center = c(12f, 15.5f), style = Stroke(w, cap = StrokeCap.Round))
     }
 }
 
