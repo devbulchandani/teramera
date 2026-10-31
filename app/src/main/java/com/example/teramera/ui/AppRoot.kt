@@ -244,7 +244,7 @@ private fun MainApp(
             while (true) {
                 if (first) sessionViewModel.refresh() else sessionViewModel.syncNow()
                 first = false
-                kotlinx.coroutines.delay(25_000)
+                kotlinx.coroutines.delay(30_000)
             }
         }
     }

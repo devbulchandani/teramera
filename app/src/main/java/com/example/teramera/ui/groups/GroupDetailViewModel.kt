@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import com.example.teramera.data.local.PaymentMethod
 import com.example.teramera.data.repository.DebtTransfer
 import com.example.teramera.data.repository.GroupDetail
@@ -116,8 +117,11 @@ class GroupDetailViewModel @Inject constructor(
         }
     }
 
+    private var refreshJob: Job? = null
+
     fun refresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             loadingRemote.value = true
             remoteError.value = null
             try {

@@ -1,8 +1,12 @@
 package com.example.teramera.data.sync
 
+import com.example.teramera.core.network.ActivityEventDto
+import com.example.teramera.core.network.BalanceDto
 import com.example.teramera.core.network.CreateExpenseRequestDto
 import com.example.teramera.core.network.CreateSettlementRequestDto
+import com.example.teramera.core.network.GroupSummaryDto
 import com.example.teramera.core.network.LedgerApi
+import com.example.teramera.core.network.MeDto
 import com.example.teramera.core.network.TokenStore
 import com.example.teramera.core.network.userMessage
 import com.example.teramera.data.local.SyncedActivityEntity
@@ -13,6 +17,8 @@ import com.example.teramera.core.stats.SpendSnapshot
 import com.example.teramera.core.stats.SpendStore
 import com.example.teramera.data.local.TerameraDao
 import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,6 +47,14 @@ class SyncRepository @Inject constructor(
     private val _lastSyncAt = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
     val lastSyncAt: kotlinx.coroutines.flow.StateFlow<Long?> = _lastSyncAt
 
+    // One sync at a time. Without this, slow requests stack up every poll.
+    private val syncMutex = Mutex()
+    private var lastMe: MeDto? = null
+    private var lastBalances: List<BalanceDto>? = null
+    private var lastGroups: List<GroupSummaryDto>? = null
+    private var lastActivity: List<ActivityEventDto>? = null
+    private var lastSpend: SpendSnapshot? = null
+
     suspend fun isLoggedIn(): Boolean = tokenStore.current() != null
 
     suspend fun selfUserId(): String? = tokenStore.current()?.userId
@@ -59,7 +73,9 @@ class SyncRepository @Inject constructor(
             if (e.code() == 404) null else throw e
         }
 
-    suspend fun refreshNow(): Result {
+    suspend fun refreshNow(): Result = syncMutex.withLock { refreshNowLocked() }
+
+    private suspend fun refreshNowLocked(): Result {
         return try {
         val now = System.currentTimeMillis()
         if (tokenStore.cacheEpoch() < CACHE_EPOCH) {
@@ -70,6 +86,11 @@ class SyncRepository @Inject constructor(
             dao.clearSyncedActivity()
             spendStore.clear()
             tokenStore.setCacheEpoch(CACHE_EPOCH)
+            lastMe = null
+            lastBalances = null
+            lastGroups = null
+            lastActivity = null
+            lastSpend = null
         }
         var wroteAnything = false
         var meLoaded = false
@@ -84,21 +105,26 @@ class SyncRepository @Inject constructor(
 
             meDeferred.await()?.let { me ->
                 meLoaded = true
-                tokenStore.saveStats(me.totalSpentMinor, me.expenseCount)
-                // the previous account's "me" row must not survive a sign-in switch
-                dao.clearSelfUsers()
-                dao.insertUser(
-                    com.example.teramera.data.local.UserEntity(
-                        id = me.id, name = me.name ?: "You", isSelf = true,
-                        email = me.email, upiId = me.upiId?.ifEmpty { null },
+                if (me != lastMe) {
+                    tokenStore.saveStats(me.totalSpentMinor, me.expenseCount)
+                    // the previous account's "me" row must not survive a sign-in switch
+                    dao.clearSelfUsers()
+                    dao.insertUser(
+                        com.example.teramera.data.local.UserEntity(
+                            id = me.id, name = me.name ?: "You", isSelf = true,
+                            email = me.email, upiId = me.upiId?.ifEmpty { null },
+                        )
                     )
-                )
+                    lastMe = me
+                }
             }
 
             // Each replace happens inside a Room transaction so the downstream
             // Flow observes exactly one emission instead of delete + insert,
             // avoiding double-recompose on the home / activity screens.
             balancesDeferred.await()?.let { balances ->
+                if (balances == lastBalances) return@let
+                lastBalances = balances
                 wroteAnything = true
                 dao.replaceSyncedBalances(balances.map { dto ->
                     SyncedBalanceEntity(
@@ -109,6 +135,8 @@ class SyncRepository @Inject constructor(
             }
 
             groupsDeferred.await()?.let { groups ->
+                if (groups == lastGroups) return@let
+                lastGroups = groups
                 wroteAnything = true
                 // replace, not upsert — groups you left must disappear
                 dao.replaceSyncedGroups(groups.map { dto ->
@@ -124,23 +152,27 @@ class SyncRepository @Inject constructor(
             }
 
             spendDeferred.await()?.let { spend ->
-                spendStore.save(
-                    SpendSnapshot(
-                        totalSpentMinor = spend.totalSpentMinor,
-                        totalExpenseCount = spend.totalExpenseCount,
-                        thisMonthKey = spend.thisMonthKey,
-                        thisMonthSpentMinor = spend.thisMonthSpentMinor,
-                        thisMonthExpenseCount = spend.thisMonthExpenseCount,
-                        lastMonthSpentMinor = spend.lastMonthSpentMinor,
-                        lastMonthExpenseCount = spend.lastMonthExpenseCount,
-                        months = spend.months.map {
-                            MonthSpend(it.month, it.spentMinor, it.expenseCount)
-                        },
-                    )
+                val snapshot = SpendSnapshot(
+                    totalSpentMinor = spend.totalSpentMinor,
+                    totalExpenseCount = spend.totalExpenseCount,
+                    thisMonthKey = spend.thisMonthKey,
+                    thisMonthSpentMinor = spend.thisMonthSpentMinor,
+                    thisMonthExpenseCount = spend.thisMonthExpenseCount,
+                    lastMonthSpentMinor = spend.lastMonthSpentMinor,
+                    lastMonthExpenseCount = spend.lastMonthExpenseCount,
+                    months = spend.months.map {
+                        MonthSpend(it.month, it.spentMinor, it.expenseCount)
+                    },
                 )
+                if (snapshot != lastSpend) {
+                    lastSpend = snapshot
+                    spendStore.save(snapshot)
+                }
             }
 
             activityDeferred.await()?.let { activity ->
+                if (activity == lastActivity) return@let
+                lastActivity = activity
                 wroteAnything = true
                 dao.replaceSyncedActivity(activity.map { e ->
                     SyncedActivityEntity(
