@@ -513,6 +513,14 @@ def run_checks():
     call("DELETE", f"/groups/{g3}")
     check("placeholder test group cleaned up", True)
 
+    # ---- group name bounds + invite email ----
+    call("POST", "/groups", {"name": "a" * 81}, expect=400)
+    check("group name longer than 80 is rejected", True)
+    bounded = call("POST", "/groups", {"name": "a" * 80})
+    check("group name of exactly 80 is accepted", len(bounded["name"]) == 80, bounded)
+    invite = call("POST", f"/groups/{bounded['id']}/invite-email", {"email": "friend@example.com"})
+    check("invite email accepted", invite.get("status") in {"sent", "logged"}, invite)
+
     # ---- personal expense (single participant, no group) ----
     spend_before = call("GET", "/spend")["totalSpentMinor"]
     personal = call("POST", "/expenses", {

@@ -457,13 +457,15 @@ async function requireMember(c: any, groupId: string, userId: string) {
 
 app.post("/groups", async (c) => {
     const body = await c.req.json<{ name?: string; currency?: string; memberUserIds?: string[] }>();
-    if (!body.name?.trim()) return jsonError(c, 400, "name is required");
+    const name = body.name?.trim();
+    if (!name) return jsonError(c, 400, "name is required");
+    if (name.length > 80) return jsonError(c, 400, "Name must be 80 characters or fewer");
 
     const id = crypto.randomUUID();
     await run(
         c,
         "INSERT INTO groups (id, name, currency, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
-        id, body.name.trim(), body.currency ?? "INR", c.get("userId"), Date.now(),
+        id, name, body.currency ?? "INR", c.get("userId"), Date.now(),
     );
     await run(c, "INSERT INTO memberships (group_id, user_id, role) VALUES (?, ?, 'member')", id, c.get("userId"));
 
@@ -476,7 +478,7 @@ app.post("/groups", async (c) => {
             id, memberId,
         );
     }
-    return c.json({ id, name: body.name.trim(), currency: body.currency ?? "INR" });
+    return c.json({ id, name, currency: body.currency ?? "INR" });
 });
 
 /** Rename a group. Only the creator can manage group settings. */
@@ -568,12 +570,17 @@ app.post("/groups/:groupId/invite-email", async (c) => {
     const [group] = await rows<GroupRow>(c, "SELECT name FROM groups WHERE id = ?", groupId);
     const link = `${originOf(c)}/invite/${groupId}`;
     const inviterName = inviter?.name ?? "A friend";
+    const groupName = group.name;
+    const safeInviterName = escapeHtml(inviterName);
+    const safeGroupName = escapeHtml(groupName);
     const html = `
-      <p>${inviterName} added you to <b>${group.name}</b> on teramera — split expenses with friends.</p>
+      <p>${safeInviterName} added you to <b>${safeGroupName}</b> on teramera — split expenses with friends.</p>
       <p><a href="${link}">Open your invite</a> to join the group${body.email.includes("@") ? "" : ""}.</p>
       <p>If you don't have the app yet, that page will get you set up first.</p>`;
 
-    const subject = `${inviterName} invited you to ${group.name} on teramera`;
+    const subjectInviter = inviterName.replace(/[\r\n]+/g, " ").trim();
+    const subjectGroup = groupName.replace(/[\r\n]+/g, " ").trim();
+    const subject = `${subjectInviter} invited you to ${subjectGroup} on teramera`;
     try {
         await sendMail(c.env, body.email, subject, html,
             `${inviterName} invited you to ${group.name} on teramera. Open your invite link: ${link}`);
