@@ -562,6 +562,31 @@ def run_checks():
     health = call("GET", "/health", tok="")
     check("health probe stays public json", health["status"] == "ok", health)
 
+    # ---- large group: IN(...) lookups must be chunked under D1's param cap ----
+    large = call("POST", "/groups", {"name": "Large"})["id"]
+    call("POST", f"/groups/{large}/members", {"userId": "user-b"})
+    for i in range(120):
+        call("POST", "/expenses", {
+            "groupId": large,
+            "title": f"Large expense {i}",
+            "amountMinor": 100,
+            "splitType": "EQUAL",
+            "participantIds": ["user-a", "user-b"],
+            "paidByUserId": "user-a",
+        })
+    large_detail = call("GET", f"/groups/{large}/detail")
+    check("large group detail returns every expense", len(large_detail["expenses"]) == 120, len(large_detail["expenses"]))
+    large_expenses = call("GET", f"/groups/{large}/expenses")
+    check("large group expense feed returns every expense", len(large_expenses) == 120, len(large_expenses))
+    large_list = call("GET", "/groups")
+    check("large group appears in group summary", any(g["id"] == large for g in large_list), large)
+
+    # ---- many groups: the groupIds IN(...) clauses must also be chunked ----
+    for i in range(100):
+        call("POST", "/groups", {"name": f"Bulk group {i}"})
+    all_groups = call("GET", "/groups")
+    check("group summary paginates past the param cap", len(all_groups) >= 100, len(all_groups))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Run the worker API smoke test.")
