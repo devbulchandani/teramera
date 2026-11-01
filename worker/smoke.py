@@ -186,13 +186,19 @@ def call(method, path, body=None, tok=A, expect=200):
     return parsed
 
 
-def page(path):
-    """GET a non-JSON (HTML) route and return (status, body)."""
+def page_full(path):
+    """GET a non-JSON (HTML) route and return (status, body, headers)."""
     try:
         with urllib.request.urlopen(BASE + path) as r:
-            return r.status, r.read().decode()
+            return r.status, r.read().decode(), r.headers
     except urllib.error.HTTPError as e:
-        return e.code, e.read().decode()
+        return e.code, e.read().decode(), e.headers
+
+
+def page(path):
+    """GET a non-JSON (HTML) route and return (status, body)."""
+    status, body, _ = page_full(path)
+    return status, body
 
 
 def check(label, cond, detail=""):
@@ -390,6 +396,21 @@ def run_checks():
     check("split with a zero-balance friend works", balances.get("user-c") == 1000, balances)
     call("GET", "/users/find?email=nobody@example.com", expect=404)
     call("GET", "/users/find?email=not-an-email", expect=400)
+
+    # ---- invite page: group id validation, escaping and headers ----
+    status, _, _ = page_full("/invite/not-a-uuid")
+    check("non-uuid invite is rejected", status == 404, status)
+    status, _, _ = page_full("/invite/00000000-0000-4000-8000-000000000000")
+    check("unknown group invite is rejected", status == 404, status)
+    invite_group = call("POST", "/groups", {"name": "Invite Test"})
+    igid = invite_group["id"]
+    status, invite, headers = page_full(f"/invite/{igid}")
+    check("valid invite serves the page", status == 200 and f'href="intent://invite/{igid}#' in invite, invite[:120])
+    check(
+        "invite page sets nosniff",
+        headers.get("X-Content-Type-Options") == "nosniff",
+        headers.get("X-Content-Type-Options"),
+    )
 
     # ---- validation ----
     call(
