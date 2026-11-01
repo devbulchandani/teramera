@@ -1038,6 +1038,13 @@ app.post("/expenses", async (c) => {
             if (!memberSet.has(p.userId)) return jsonError(c, 403, `Payer is not a group member: ${p.userId}`);
         }
     }
+    // group-less expenses are personal: the caller must be one of the people involved
+    if (!body.groupId) {
+        const involved = new Set([...participantIds, ...payments.map((p) => p.userId)]);
+        if (!involved.has(userId)) {
+            return jsonError(c, 403, "You must be a payer or participant on a personal expense");
+        }
+    }
 
     // ---- total share per participant, then allocate each payment pro-rata ----
     const rawValues: Record<string, number> = body.participants ?? {};
