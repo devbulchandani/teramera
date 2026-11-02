@@ -19,9 +19,11 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 WORKER = Path(__file__).resolve().parent
@@ -102,6 +104,19 @@ def seed_users():
         "INSERT OR REPLACE INTO users (id, phone, email, name, created_at) "
         f"VALUES {values};"
     )
+
+
+def seed_refresh_token(user_id="user-a"):
+    """Insert a known refresh token directly so rotation can be tested without Google."""
+    token = f"{uuid.uuid4()}.{uuid.uuid4()}"
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    now_ms = int(time.time() * 1000)
+    expires = now_ms + 30 * 24 * 3600 * 1000
+    d1(
+        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked, created_at) "
+        f"VALUES ('{uuid.uuid4()}', '{user_id}', '{digest}', {expires}, 0, {now_ms});"
+    )
+    return token
 
 
 def start_server():
@@ -210,7 +225,153 @@ def check(label, cond, detail=""):
 # ---------- the checks ----------
 
 
+def run_refresh_checks():
+    # ---- rotation returns a fresh, usable pair ----
+    old = seed_refresh_token()
+    rotated = call("POST", "/auth/refresh", {"refreshToken": old})
+    check("refresh rotates the token", rotated["refreshToken"] != old, rotated)
+    check("refresh returns a new access token", bool(rotated["accessToken"]), rotated)
+    check("refresh keeps the same user", rotated["userId"] == "user-a", rotated)
+
+    # ---- a just-rotated token may be retried (lost response / process death) ----
+    reused = call("POST", "/auth/refresh", {"refreshToken": old})
+    check("old token works inside the grace window", reused["refreshToken"] != old, reused)
+    check("grace rotation keeps the user", reused["userId"] == "user-a", reused)
+
+    # ---- a token revoked outside the grace window is rejected ----
+    old_digest = hashlib.sha256(old.encode()).hexdigest()
+    d1(f"UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = '{old_digest}';")
+    call("POST", "/auth/refresh", {"refreshToken": old}, expect=401)
+    check("token revoked outside the grace window is rejected", True)
+
+    # ---- concurrent refreshes of one token must all succeed, never 500 ----
+    shared = seed_refresh_token("user-b")
+    results = []
+
+    def refresh_once():
+        results.append(call("POST", "/auth/refresh", {"refreshToken": shared}))
+
+    threads = [threading.Thread(target=refresh_once) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    check("concurrent refreshes all succeed", len(results) == 4, results)
+    check("concurrent refreshes return tokens", all(r["refreshToken"] for r in results), results)
+    call("POST", "/auth/refresh", {"refreshToken": results[0]["refreshToken"]})
+    check("a token issued under concurrency is valid", True)
+
+    # ---- logout revokes immediately: no grace for an explicit sign-out ----
+    logout_token = seed_refresh_token("user-c")
+    call("POST", "/auth/logout", {"refreshToken": logout_token}, tok="", expect=204)
+    call("POST", "/auth/refresh", {"refreshToken": logout_token}, expect=401)
+    check("logout revokes without a grace window", True)
+
+
+def run_debt_balance_checks():
+    """Group-simplified debts must match what /balances shows on Home/Settle."""
+    for uid, name in [
+        ("debt-owner", "Gautam"),
+        ("debt-dhiraj", "Dhiraj"),
+        ("debt-dev", "Dev"),
+    ]:
+        d1(
+            "INSERT OR REPLACE INTO users (id, phone, email, name, created_at) "
+            f"VALUES ('{uid}', NULL, '{uid}@example.com', '{name}', 0);"
+        )
+    owner = token("debt-owner")
+    dhiraj = token("debt-dhiraj")
+
+    group = call("POST", "/groups", {"name": "Debt balance"}, tok=owner)["id"]
+    call("POST", f"/groups/{group}/members", {"userId": "debt-dhiraj"}, tok=owner)
+    call("POST", f"/groups/{group}/members", {"userId": "debt-dev"}, tok=owner)
+
+    # ₹407 paid by the owner for Dhiraj alone.
+    debt = call(
+        "POST",
+        "/expenses",
+        {
+            "groupId": group,
+            "title": "Debt transfer",
+            "amountMinor": 40700,
+            "splitType": "EQUAL",
+            "participantIds": ["debt-dhiraj"],
+            "paidByUserId": "debt-owner",
+        },
+        tok=owner,
+    )
+    # ₹68 paid by Dhiraj, split three ways: the owner ends up owing Dhiraj a
+    # little, so the group nets to 384.33 rather than the full 407.
+    call(
+        "POST",
+        "/expenses",
+        {
+            "groupId": group,
+            "title": "Snacks",
+            "amountMinor": 6800,
+            "splitType": "EQUAL",
+            "participantIds": ["debt-owner", "debt-dhiraj", "debt-dev"],
+            "paidByUserId": "debt-dhiraj",
+        },
+        tok=dhiraj,
+    )
+
+    detail = call("GET", f"/groups/{group}/detail", tok=owner)
+    nets = {b["userId"]: b["netMinor"] for b in detail["balances"]}
+    check(
+        "group nets match the reported case",
+        nets == {"debt-owner": 38433, "debt-dhiraj": -36167, "debt-dev": -2266},
+        nets,
+    )
+    balances = {b["userId"]: b["netMinor"] for b in call("GET", "/balances", tok=owner)}
+    check(
+        "home balances include both debtors",
+        balances.get("debt-dhiraj") == 36167 and balances.get("debt-dev") == 2266,
+        balances,
+    )
+
+    # Editing who is included re-splits equally across the new list.
+    call(
+        "PATCH",
+        f"/expenses/{debt['id']}",
+        {"participantIds": ["debt-dhiraj", "debt-dev"], "splitType": "EQUAL"},
+        tok=owner,
+    )
+    detail = call("GET", f"/groups/{group}/detail", tok=owner)
+    edited = [e for e in detail["expenses"] if e["id"] == debt["id"]][0]
+    check("edited expense includes both debtors", edited["participantCount"] == 2, edited)
+    check(
+        "edited expense exposes its participant ids",
+        set(edited["participantIds"]) == {"debt-dhiraj", "debt-dev"},
+        edited,
+    )
+    balances = {b["userId"]: b["netMinor"] for b in call("GET", "/balances", tok=owner)}
+    check(
+        "balances follow the edited participants",
+        balances.get("debt-dhiraj") == 15817 and balances.get("debt-dev") == 22616,
+        balances,
+    )
+
+    # Removing a person again puts the whole debt back on Dhiraj.
+    call(
+        "PATCH",
+        f"/expenses/{debt['id']}",
+        {"participantIds": ["debt-dhiraj"], "splitType": "EQUAL"},
+        tok=owner,
+    )
+    balances = {b["userId"]: b["netMinor"] for b in call("GET", "/balances", tok=owner)}
+    check(
+        "removing a participant restores the single debt",
+        balances.get("debt-dhiraj") == 36167 and balances.get("debt-dev") == 2266,
+        balances,
+    )
+
+    call("DELETE", f"/groups/{group}", tok=owner)
+    check("debt balance test group cleaned up", True)
+
+
 def run_checks():
+    run_refresh_checks()
     # ---- group + multi-payer expense ----
     group = call("POST", "/groups", {"name": "Goa Trip"})
     gid = group["id"]
@@ -619,6 +780,43 @@ def run_checks():
     call("GET", f"/groups/{g2}/detail", expect=404)
     remaining = call("GET", "/groups")
     check("deleted group disappears from group list", all(g["id"] != g2 for g in remaining), remaining)
+
+    # ---- single-participant group expense = one-to-one debt ----
+    g4 = call("POST", "/groups", {"name": "Debt test"})["id"]
+    call("POST", f"/groups/{g4}/members", {"userId": "user-b"})
+    debt = call(
+        "POST",
+        "/expenses",
+        {
+            "groupId": g4,
+            "title": "Covered Bob's ticket",
+            "amountMinor": 7500,
+            "splitType": "EQUAL",
+            "participantIds": ["user-b"],
+            "paidByUserId": "user-a",
+        },
+    )
+    check("single-participant debt accepted", debt.get("shareCount") == 1, debt)
+    debt_detail = call("GET", f"/groups/{g4}/detail")
+    debt_nets = {b["userId"]: b["netMinor"] for b in debt_detail["balances"]}
+    check(
+        "debt nets to the full amount",
+        debt_nets == {"user-a": 7500, "user-b": -7500},
+        debt_nets,
+    )
+    # editing a single-participant debt must also be allowed
+    call("PATCH", f"/expenses/{debt['id']}", {"amountMinor": 8000})
+    debt_detail = call("GET", f"/groups/{g4}/detail")
+    debt_nets = {b["userId"]: b["netMinor"] for b in debt_detail["balances"]}
+    check(
+        "edited debt nets to the new amount",
+        debt_nets == {"user-a": 8000, "user-b": -8000},
+        debt_nets,
+    )
+    call("DELETE", f"/groups/{g4}")
+    check("debt test group cleaned up", True)
+
+    run_debt_balance_checks()
 
     # ---- app version link is scheme-correct locally ----
     version = call("GET", "/app/version")

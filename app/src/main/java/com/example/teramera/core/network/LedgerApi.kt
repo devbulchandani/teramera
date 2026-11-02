@@ -113,6 +113,7 @@ data class UpdateExpenseRequestDto(
     val title: String? = null,
     val amountMinor: Long? = null,
     val participantIds: List<String>? = null,
+    val splitType: String? = null,
 )
 data class GroupExpenseDto(
     val id: String,
@@ -121,9 +122,11 @@ data class GroupExpenseDto(
     val paidByUserId: String,
     val canDelete: Boolean = false,
     val payerCount: Int = 1,
+    val splitType: String = "EQUAL",
     val amountMinor: Long,
     val myShareMinor: Long,
     val participantCount: Int,
+    val participantIds: List<String> = emptyList(),
     val createdAt: Long,
 )
 

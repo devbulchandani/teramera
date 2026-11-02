@@ -40,3 +40,7 @@ keys/
 # personal scratch scripts
 scratch/
 .idea/deviceManager.xml
+
+# python bytecode
+__pycache__/
+*.pyc

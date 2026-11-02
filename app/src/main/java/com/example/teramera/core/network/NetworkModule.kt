@@ -49,8 +49,30 @@ object NetworkModule {
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
 
-    @Provides @Singleton
-    fun authApi(retrofit: Retrofit): AuthApi = retrofit.create(AuthApi::class.java)
+    /**
+     * Auth calls get their own client: no bearer interceptor and, critically, no
+     * authenticator. A 401 from `/auth/refresh` must never re-enter the refresh
+     * path or it recurses until the OkHttp thread dies.
+     */
+    @Provides
+    @Singleton
+    fun authApi(moshi: Moshi): AuthApi {
+        val client = OkHttpClient.Builder()
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = if (com.example.teramera.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
+                else HttpLoggingInterceptor.Level.NONE
+            })
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(15, TimeUnit.SECONDS)
+            .build()
+        return Retrofit.Builder()
+            .baseUrl(DEFAULT_BASE_URL)
+            .client(client)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(AuthApi::class.java)
+    }
 
     @Provides @Singleton
     fun ledgerApi(retrofit: Retrofit): LedgerApi = retrofit.create(LedgerApi::class.java)

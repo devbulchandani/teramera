@@ -51,6 +51,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen(
     onLoggedIn: () -> Unit,
+    sessionExpired: Boolean = false,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -161,7 +162,11 @@ fun LoginScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        ErrorBanner(state.error, state.offerAddAccount, addGoogleAccount)
+        ErrorBanner(
+            state.error ?: if (sessionExpired) "Your session expired. Sign in again to continue." else null,
+            state.offerAddAccount,
+            addGoogleAccount,
+        )
         }
     }
 }

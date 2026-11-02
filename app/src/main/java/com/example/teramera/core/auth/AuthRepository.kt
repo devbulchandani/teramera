@@ -6,6 +6,7 @@ import com.example.teramera.core.network.LogoutRequestDto
 import com.example.teramera.core.network.TokenStore
 import com.example.teramera.core.network.AuthApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +21,9 @@ class AuthRepository @Inject constructor(
 
     /** null while the session state is being restored, true/false once known. */
     val isLoggedIn: Flow<Boolean?> = tokenStore.tokens.map { it != null }
+
+    /** Set when the backend definitively rejected the refresh token. */
+    val sessionExpired: StateFlow<Boolean> = tokenStore.sessionExpired
 
     suspend fun googleLogin(idToken: String, avatarUrl: String? = null): Result<Unit> =
         try {
@@ -48,6 +52,7 @@ class AuthRepository @Inject constructor(
             runCatching { authApi.logout(LogoutRequestDto(tokens.refreshToken)) }
         }
         tokenStore.clear()
+        tokenStore.clearSessionExpired()
         spendStore.clear()
         dao.clearAccountData()
     }

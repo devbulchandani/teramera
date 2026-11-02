@@ -156,9 +156,11 @@ class GroupDetailViewModel @Inject constructor(
                             payerName = memberName(d, it.paidByUserId),
                             canDelete = it.canDelete,
                             payerCount = it.payerCount,
+                            splitType = it.splitType,
                             amountMinor = it.amountMinor,
                             myShareMinor = it.myShareMinor,
                             participantCount = it.participantCount,
+                            participantIds = it.participantIds,
                             createdAt = it.createdAt,
                         )
                     },
@@ -188,6 +190,7 @@ class GroupDetailViewModel @Inject constructor(
                 )
             } catch (e: retrofit2.HttpException) {
                 remoteError.value = when (e.code()) {
+                    401 -> "Couldn't refresh your session. Check your connection and try again."
                     403 -> "You're not a member of this group."
                     404 -> {
                         syncRepository.removeLocalGroup(groupId)
@@ -421,6 +424,7 @@ class GroupDetailViewModel @Inject constructor(
     data class ExpenseEditState(
         val visible: Boolean = false,
         val line: com.example.teramera.data.repository.ExpenseLine? = null,
+        val participants: Set<String> = emptySet(),
         val busy: Boolean = false,
         val error: String? = null,
     )
@@ -429,16 +433,35 @@ class GroupDetailViewModel @Inject constructor(
     val expenseEditState: StateFlow<ExpenseEditState> = expenseEdit
 
     fun showEditExpense(line: com.example.teramera.data.repository.ExpenseLine) {
-        expenseEdit.value = ExpenseEditState(visible = true, line = line)
+        expenseEdit.value = ExpenseEditState(
+            visible = true,
+            line = line,
+            participants = line.participantIds.toSet(),
+        )
+    }
+
+    fun toggleEditParticipant(userId: String) {
+        val current = expenseEdit.value
+        if (!current.visible || current.busy) return
+        val next = current.participants.toMutableSet()
+        if (!next.remove(userId)) next.add(userId)
+        if (next.isEmpty()) return
+        expenseEdit.value = current.copy(participants = next)
     }
 
     fun dismissEditExpense() {
         expenseEdit.value = ExpenseEditState()
     }
 
-    fun saveExpense(title: String, amountMinor: Long) {
+    fun saveExpense(title: String, amountMinor: Long, participantIds: List<String>) {
         val line = expenseEdit.value.line ?: return
         if (expenseEdit.value.busy) return
+        val currentPeople = line.participantIds.toSet()
+        val peopleChanged = currentPeople.isNotEmpty() && participantIds.toSet() != currentPeople
+        if (peopleChanged && participantIds.isEmpty()) {
+            expenseEdit.value = expenseEdit.value.copy(error = "Pick at least one person")
+            return
+        }
         viewModelScope.launch {
             expenseEdit.value = expenseEdit.value.copy(busy = true, error = null)
             try {
@@ -447,6 +470,10 @@ class GroupDetailViewModel @Inject constructor(
                     com.example.teramera.core.network.UpdateExpenseRequestDto(
                         title = title.trim(),
                         amountMinor = amountMinor,
+                        // A participant change is an explicit re-split. Keep it
+                        // predictable by splitting equally across the new list.
+                        participantIds = if (peopleChanged) participantIds else null,
+                        splitType = if (peopleChanged) "EQUAL" else null,
                     ),
                 )
                 expenseEdit.value = ExpenseEditState()

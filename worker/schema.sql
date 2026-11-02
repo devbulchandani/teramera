@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     user_id TEXT NOT NULL REFERENCES users(id),
     token_hash TEXT NOT NULL,
     expires_at INTEGER NOT NULL,
+    -- 0 while active; epoch millis once rotated; 1 means revoked by an older
+    -- build or an explicit logout (never eligible for the rotation grace window)
     revoked INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
 );
@@ -83,6 +85,7 @@ CREATE TABLE IF NOT EXISTS device_tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_requests(phone, created_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_token_hash ON refresh_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_expenses_group ON expenses(group_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_expenses_parent ON expenses(parent_id);
 CREATE INDEX IF NOT EXISTS idx_shares_expense ON expense_shares(expense_id);

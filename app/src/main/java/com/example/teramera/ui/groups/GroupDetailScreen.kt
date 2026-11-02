@@ -187,6 +187,8 @@ fun GroupDetailScreen(
     if (expenseEditState.visible) {
         EditExpenseDialog(
             state = expenseEditState,
+            members = d.members,
+            onToggleParticipant = viewModel::toggleEditParticipant,
             onSave = viewModel::saveExpense,
             onDelete = viewModel::deleteExpense,
             onDismiss = viewModel::dismissEditExpense,
@@ -1019,7 +1021,9 @@ private fun DeleteGroupDialog(
 @Composable
 private fun EditExpenseDialog(
     state: GroupDetailViewModel.ExpenseEditState,
-    onSave: (title: String, amountMinor: Long) -> Unit,
+    members: List<com.example.teramera.data.repository.GroupMember>,
+    onToggleParticipant: (String) -> Unit,
+    onSave: (title: String, amountMinor: Long, participantIds: List<String>) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -1038,7 +1042,10 @@ private fun EditExpenseDialog(
         androidx.compose.runtime.mutableStateOf(false)
     }
     val amountMinor = parseRupeesToMinor(amountText)
-    val valid = title.isNotBlank() && amountMinor != null && amountMinor > 0
+    val canEditPeople = line?.participantIds?.isNotEmpty() == true
+    val valid = title.isNotBlank() && amountMinor != null && amountMinor > 0 &&
+        (!canEditPeople || state.participants.isNotEmpty())
+    val peopleChanged = canEditPeople && state.participants != line?.participantIds?.toSet()
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -1075,6 +1082,33 @@ private fun EditExpenseDialog(
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (canEditPeople) {
+                        Text(
+                            "Who's included",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            members.chunked(3).forEach { rowMembers ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    rowMembers.forEach { member ->
+                                        EditMemberChip(
+                                            label = if (member.isSelf) "You" else member.name,
+                                            selected = member.id in state.participants,
+                                            onClick = { onToggleParticipant(member.id) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (peopleChanged) {
+                            Text(
+                                "Changing who's included re-splits this expense equally.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 if (!state.error.isNullOrBlank()) {
                     Text(state.error, color = MaterialTheme.colorScheme.error,
@@ -1091,7 +1125,7 @@ private fun EditExpenseDialog(
             } else {
                 androidx.compose.material3.TextButton(
                     enabled = valid && !state.busy,
-                    onClick = { amountMinor?.let { onSave(title, it) } },
+                    onClick = { amountMinor?.let { onSave(title, it, state.participants.toList()) } },
                 ) { Text("Save", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
             }
         },
@@ -1110,6 +1144,24 @@ private fun EditExpenseDialog(
             }
         },
     )
+}
+
+@Composable
+private fun EditMemberChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(44.dp)
+            .clip(CircleShape)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium)
+    }
 }
 
 /** "12.34" -> 1234 minor units. Returns null for anything that isn't valid money. */

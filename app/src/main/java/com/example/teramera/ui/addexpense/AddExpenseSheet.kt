@@ -754,6 +754,8 @@ private fun ColumnScope.ReviewStep(state: AddExpenseUiState, viewModel: AddExpen
     val now = remember { System.currentTimeMillis() }
     val shares = if (state.serverMode) viewModel.serverShares(state) else viewModel.previewShares(state)
     val total = state.draft.amountMinor
+    val shareList = shares.orEmpty()
+    val debtText = debtLabel(state, shareList.size)
     val payerText = when {
         state.draft.payers.isEmpty() -> "You"
         state.draft.payers.size == 1 -> nameOf(state, state.draft.payers.keys.first())
@@ -781,10 +783,13 @@ private fun ColumnScope.ReviewStep(state: AddExpenseUiState, viewModel: AddExpen
                     Spacer(Modifier.width(14.dp))
                     Column {
                         Text(
-                            if (shares.orEmpty().size == 1) {
-                                "Personal expense${groupName?.let { " · $it" } ?: ""}"
-                            } else {
-                                "Splitting ${groupName ?: "no group"} · ${splitLabel(state.draft.splitType)}"
+                            when {
+                                debtText != null ->
+                                    "$debtText${groupName?.let { " · $it" } ?: ""}"
+                                shareList.size == 1 ->
+                                    "Personal expense${groupName?.let { " · $it" } ?: ""}"
+                                else ->
+                                    "Splitting ${groupName ?: "no group"} · ${splitLabel(state.draft.splitType)}"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -906,7 +911,6 @@ private fun sharesValid(state: AddExpenseUiState, viewModel: AddExpenseViewModel
 
 private fun serverSharesValid(state: AddExpenseUiState, viewModel: AddExpenseViewModel): Boolean =
     state.draft.includedServer.isNotEmpty() &&
-        (state.draft.groupId == null || state.draft.includedServer.size >= 2) &&
         state.draft.amountMinor > 0 &&
         viewModel.serverShares(state) != null
 
@@ -916,6 +920,19 @@ private fun nameOf(state: AddExpenseUiState, userId: String): String = when {
         ?: state.friends.firstOrNull { it.id == userId }?.name
         ?: state.self?.takeIf { it.id == userId }?.name
         ?: userId
+}
+
+/**
+ * When exactly one person is selected and someone else paid, the expense is a
+ * one-to-one debt rather than a split. Returns a human sentence, or null.
+ */
+private fun debtLabel(state: AddExpenseUiState, includedCount: Int): String? {
+    if (includedCount != 1) return null
+    val debtor = state.serverPeople.firstOrNull { it.id in state.draft.includedServer } ?: return null
+    val payerId = state.payerIds.firstOrNull() ?: return null
+    if (debtor.id == payerId) return null
+    val payer = if (payerId == state.selfId) "you" else nameOf(state, payerId)
+    return "${memberLabel(debtor)} owes $payer the full amount"
 }
 
 private fun initialsOf(name: String): String =
@@ -950,7 +967,10 @@ private fun ServerSplitSection(state: AddExpenseUiState, viewModel: AddExpenseVi
 
     Spacer(Modifier.height(8.dp))
     val includedCount = state.draft.includedServer.size
-    SectionLabel("Split between · $includedCount ${if (includedCount == 1) "person" else "people"}")
+    SectionLabel(
+        debtLabel(state, includedCount)
+            ?: "Split between · $includedCount ${if (includedCount == 1) "person" else "people"}",
+    )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         members.chunked(3).forEach { rowMembers ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

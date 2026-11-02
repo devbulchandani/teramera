@@ -36,6 +36,15 @@ const app = new Hono<AppEnv>();
 
 const ACCESS_TTL_MINUTES = 15;
 
+/**
+ * How long a rotated refresh token stays usable. Refresh rotation is not
+ * idempotent over a lossy network: the server can revoke the old token and
+ * issue a new one while the response is lost on the way back. Without a grace
+ * window the client is left holding a dead token and has no way to recover
+ * except signing in again. Keep this comfortably above a normal mobile retry.
+ */
+const REFRESH_GRACE_MS = 2 * 60 * 1000;
+
 const METHODS = new Set(["UPI", "CASH", "BANK"]);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -319,19 +328,47 @@ app.post("/auth/google", async (c) => {
 
 // ---------- refresh / logout ----------
 
+// `revoked` stores 0 while a token is active and the revocation timestamp
+// (epoch millis) once it has been rotated. Values of 1 come from older builds
+// and from explicit logout; those are never given a grace window.
 app.post("/auth/refresh", async (c) => {
     const body = await c.req.json<{ refreshToken: string }>();
     if (!body?.refreshToken) return jsonError(c, 400, "refreshToken is required");
     const hash = await sha256Hex(body.refreshToken);
+    const now = Date.now();
     const [row] = await rows<Row>(
         c,
-        "SELECT * FROM refresh_tokens WHERE token_hash = ? AND revoked = 0",
+        "SELECT * FROM refresh_tokens WHERE token_hash = ?",
         hash,
     );
-    if (!row || (row.expires_at as number) < Date.now()) {
+    if (!row || (row.expires_at as number) < now) {
         return jsonError(c, 401, "Invalid or expired refresh token");
     }
-    await run(c, "UPDATE refresh_tokens SET revoked = 1 WHERE id = ?", row.id);
+
+    const revokedAt = Number(row.revoked ?? 0);
+    if (revokedAt !== 0) {
+        // The token was already rotated. Allow a short retry window so a lost
+        // response (or process death before the save) cannot brick the session.
+        const withinGrace = revokedAt > 1 && now - revokedAt <= REFRESH_GRACE_MS;
+        if (!withinGrace) return jsonError(c, 401, "Invalid or expired refresh token");
+    } else {
+        // Claim the rotation atomically. If another request won the race we
+        // fall back to the grace check rather than issuing two token families.
+        const claim = await c.env.DB
+            .prepare("UPDATE refresh_tokens SET revoked = ? WHERE id = ? AND revoked = 0")
+            .bind(now, row.id)
+            .run();
+        if ((claim.meta?.changes ?? 0) === 0) {
+            const [fresh] = await rows<Row>(
+                c,
+                "SELECT revoked FROM refresh_tokens WHERE id = ?",
+                row.id,
+            );
+            const claimedAt = Number(fresh?.revoked ?? 0);
+            const withinGrace = claimedAt > 1 && now - claimedAt <= REFRESH_GRACE_MS;
+            if (!withinGrace) return jsonError(c, 401, "Invalid or expired refresh token");
+        }
+    }
 
     const [user] = await rows<UserRow>(c, "SELECT * FROM users WHERE id = ?", row.user_id);
     if (!user) return jsonError(c, 401, "User no longer exists");
@@ -342,7 +379,21 @@ app.post("/auth/logout", async (c) => {
     const body = await c.req.json<{ refreshToken?: string }>();
     if (body?.refreshToken) {
         const hash = await sha256Hex(body.refreshToken);
+        const [row] = await rows<Row>(
+            c,
+            "SELECT user_id FROM refresh_tokens WHERE token_hash = ?",
+            hash,
+        );
         await run(c, "UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", hash);
+        if (row) {
+            // Signing out must also burn predecessors still inside their grace
+            // window, otherwise an old rotated token could resurrect the session.
+            await run(
+                c,
+                "UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ? AND revoked > 1",
+                row.user_id,
+            );
+        }
     }
     return c.body(null, 204);
 });
@@ -835,6 +886,96 @@ async function groupBalances(c: any, groupId: string): Promise<{ userId: string;
     return [...net.entries()].map(([userId, netMinor]) => ({ userId, netMinor }));
 }
 
+/**
+ * The caller's friend balances as the group screens present them: net each
+ * group, simplify to the fewest transfers, then keep only transfers involving
+ * the caller. Pairwise-only math drops debtors whose debt is routed through
+ * another member, so the home and settle lists disagree with the group screen.
+ */
+async function simplifiedGroupFriendNet(c: any, selfId: string): Promise<Map<string, number>> {
+    const net = new Map<string, number>();
+    const expenses = await rows<Row>(
+        c,
+        `SELECT e.id, e.group_id, e.paid_by_user_id, e.amount_minor
+           FROM expenses e
+           JOIN memberships m ON m.group_id = e.group_id
+          WHERE m.user_id = ?`,
+        selfId,
+    );
+    const shares = await rowsByIds<Row>(
+        c,
+        (n) => `SELECT expense_id, user_id, share_amount_minor
+                  FROM expense_shares WHERE expense_id IN (${placeholders(n)})`,
+        expenses.map((e) => e.id as string),
+    );
+    const sharesByExpense = new Map<string, Row[]>();
+    for (const share of shares) {
+        const list = sharesByExpense.get(share.expense_id) ?? [];
+        list.push(share);
+        sharesByExpense.set(share.expense_id, list);
+    }
+    const settlements = await rows<Row>(
+        c,
+        `SELECT s.group_id, s.payer_user_id, s.paid_to_user_id, s.amount_minor
+           FROM settlements s
+           JOIN memberships m ON m.group_id = s.group_id
+          WHERE m.user_id = ?`,
+        selfId,
+    );
+
+    const groupNet = new Map<string, Map<string, number>>();
+    const forGroup = (groupId: string) => {
+        let map = groupNet.get(groupId);
+        if (!map) {
+            map = new Map();
+            groupNet.set(groupId, map);
+        }
+        return map;
+    };
+    for (const expense of expenses) {
+        const map = forGroup(expense.group_id as string);
+        map.set(
+            expense.paid_by_user_id,
+            (map.get(expense.paid_by_user_id) ?? 0) + Number(expense.amount_minor),
+        );
+        for (const share of sharesByExpense.get(expense.id) ?? []) {
+            map.set(
+                share.user_id,
+                (map.get(share.user_id) ?? 0) - Number(share.share_amount_minor),
+            );
+        }
+    }
+    for (const settlement of settlements) {
+        const map = forGroup(settlement.group_id as string);
+        map.set(
+            settlement.payer_user_id,
+            (map.get(settlement.payer_user_id) ?? 0) + Number(settlement.amount_minor),
+        );
+        map.set(
+            settlement.paid_to_user_id,
+            (map.get(settlement.paid_to_user_id) ?? 0) - Number(settlement.amount_minor),
+        );
+    }
+
+    for (const map of groupNet.values()) {
+        const simplified = simplifyDebts(map);
+        for (const transfer of simplified.transfers) {
+            if (transfer.toUserId === selfId && transfer.fromUserId !== selfId) {
+                net.set(
+                    transfer.fromUserId,
+                    (net.get(transfer.fromUserId) ?? 0) + transfer.amountMinor,
+                );
+            } else if (transfer.fromUserId === selfId && transfer.toUserId !== selfId) {
+                net.set(
+                    transfer.toUserId,
+                    (net.get(transfer.toUserId) ?? 0) - transfer.amountMinor,
+                );
+            }
+        }
+    }
+    return net;
+}
+
 app.get("/groups/:groupId/detail", async (c) => {
     const groupId = c.req.param("groupId");
     const userId = c.get("userId");
@@ -907,6 +1048,7 @@ app.get("/groups/:groupId/detail", async (c) => {
                 .filter((s) => s.user_id === userId)
                 .reduce((acc, s) => acc + s.share_amount_minor, 0),
             participantCount: participants.size,
+            participantIds: [...participants],
             createdAt: first.created_at,
         };
     });
@@ -966,6 +1108,7 @@ app.get("/groups/:groupId/expenses", async (c) => {
     return c.json([...groupExpenseRows(expenses).entries()].map(([parentId, logicalRows]) => {
         const first = logicalRows[0];
         const logicalShares = logicalRows.flatMap((row) => sharesByExpense.get(row.id) ?? []);
+        const participants = new Set(logicalShares.map((s) => s.user_id));
         return {
             id: first.id,
             parentId,
@@ -973,11 +1116,13 @@ app.get("/groups/:groupId/expenses", async (c) => {
             paidByUserId: first.paid_by_user_id,
             canDelete: (first.created_by ?? first.paid_by_user_id) === userId,
             payerCount: new Set(logicalRows.map((row) => row.paid_by_user_id)).size,
+            splitType: first.split_type,
             amountMinor: logicalRows.reduce((acc, row) => acc + row.amount_minor, 0),
             myShareMinor: logicalShares
                 .filter((s) => s.user_id === userId)
                 .reduce((acc, s) => acc + s.share_amount_minor, 0),
-            participantCount: new Set(logicalShares.map((s) => s.user_id)).size,
+            participantCount: participants.size,
+            participantIds: [...participants],
             createdAt: first.created_at,
         };
     }));
@@ -1042,9 +1187,8 @@ app.post("/expenses", async (c) => {
     }
     participantIds = [...new Set(participantIds)];
     if (participantIds.length < 1) return jsonError(c, 400, "At least one person is required");
-    if (body.groupId && participantIds.length < 2) {
-        return jsonError(c, 400, "A group expense needs at least two people");
-    }
+    // A single participant is valid inside a group: the payer covered them and
+    // they owe the full amount back (a one-to-one debt, not a group split).
 
     // everyone involved must exist
     for (const pid of [...new Set([...participantIds, ...payments.map((p) => p.userId)])]) {
@@ -1197,9 +1341,7 @@ app.patch("/expenses/:expenseId", async (c) => {
     }
     participantIds = [...new Set(participantIds)];
     if (participantIds.length < 1) return jsonError(c, 400, "At least one person is required");
-    if (expense.group_id && participantIds.length < 2) {
-        return jsonError(c, 400, "A group expense needs at least two people");
-    }
+    // Single-participant group expenses are debts (the payer covered that person).
 
     for (const pid of participantIds) {
         const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", pid);
@@ -1468,16 +1610,17 @@ app.get("/settlements/groups/:groupId", async (c) => {
 /** Friend-level nets across everything involving the caller. */
 app.get("/balances", async (c) => {
     const selfId = c.get("userId");
-    const net = new Map<string, number>();
+    // Groups are simplified per group, exactly like the group detail screen.
+    const net = await simplifiedGroupFriendNet(c, selfId);
 
-    // Two aggregates instead of one query per expense: what others owe me and
-    // what I owe others. /balances stays at a constant number of queries.
+    // Group-less expenses stay pairwise. Two aggregates instead of one query
+    // per expense, so /balances keeps a constant number of queries.
     const owedToMe = await rows<Row>(
         c,
         `SELECT s.user_id AS uid, SUM(s.share_amount_minor) AS total
          FROM expense_shares s
          JOIN expenses e ON e.id = s.expense_id
-         WHERE e.paid_by_user_id = ? AND s.user_id != ?
+         WHERE e.paid_by_user_id = ? AND s.user_id != ? AND e.group_id IS NULL
          GROUP BY s.user_id`,
         selfId, selfId,
     );
@@ -1490,7 +1633,7 @@ app.get("/balances", async (c) => {
         `SELECT e.paid_by_user_id AS uid, SUM(s.share_amount_minor) AS total
          FROM expense_shares s
          JOIN expenses e ON e.id = s.expense_id
-         WHERE s.user_id = ? AND e.paid_by_user_id != ?
+         WHERE s.user_id = ? AND e.paid_by_user_id != ? AND e.group_id IS NULL
          GROUP BY e.paid_by_user_id`,
         selfId, selfId,
     );
@@ -1500,7 +1643,7 @@ app.get("/balances", async (c) => {
 
     const settlements = await rows<Row>(
         c,
-        "SELECT * FROM settlements WHERE payer_user_id = ? OR paid_to_user_id = ?",
+        "SELECT * FROM settlements WHERE (payer_user_id = ? OR paid_to_user_id = ?) AND group_id IS NULL",
         selfId, selfId,
     );
     for (const s of settlements) {

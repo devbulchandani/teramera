@@ -464,10 +464,8 @@ class AddExpenseViewModel @Inject constructor(
                     saveState.value = SaveState(error = "Pick at least one person")
                     return@launch
                 }
-                if (d.groupId != null && participants.size < 2) {
-                    saveState.value = SaveState(error = "A group expense needs at least two people")
-                    return@launch
-                }
+                // One participant in a group is a debt: the payer covered them and
+                // they owe the full amount back.
                 val split = ExpensesRepository.computeSplit(currentServerInput(state))
                 if (split is SplitResult.Invalid) {
                     saveState.value = SaveState(error = split.reason)

@@ -15,8 +15,9 @@ class AuthInterceptor @Inject constructor(private val tokenStore: TokenStore) : 
         if (request.header("Authorization") != null || request.url.encodedPath.startsWith("/auth/")) {
             return chain.proceed(request)
         }
-        // Interceptors run on OkHttp threads — a short blocking read is acceptable here.
-        val tokens = runBlocking { tokenStore.current() }
+        // Hot path is the in-memory mirror. Only the very first request of a
+        // process can fall through to a blocking DataStore read.
+        val tokens = tokenStore.peek() ?: runBlocking { tokenStore.current() }
             ?: return chain.proceed(request)
         return chain.proceed(
             request.newBuilder()

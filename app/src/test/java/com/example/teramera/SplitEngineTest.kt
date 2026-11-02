@@ -34,6 +34,14 @@ class SplitEngineTest {
     }
 
     @Test
+    fun `single participant owes the whole amount`() {
+        // A debt, not a split: the payer covered one person in full.
+        val result = split(SplitType.EQUAL, 12_345L, listOf("debtor"))
+        val shares = (result as SplitResult.Ok).shares
+        assertEquals(listOf("debtor" to 12_345L), shares)
+    }
+
+    @Test
     fun `exact split fails when amounts do not sum to total`() {
         val result = split(SplitType.EXACT, 1_000L, listOf("a", "b"), mapOf("a" to 600L))
         assertTrue(result is SplitResult.Invalid)

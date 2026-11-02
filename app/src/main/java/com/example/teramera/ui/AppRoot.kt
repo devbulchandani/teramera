@@ -114,6 +114,7 @@ fun AppRoot(
 ) {
     val sessionViewModel: SessionViewModel = hiltViewModel()
     val loggedIn by sessionViewModel.isLoggedIn.collectAsStateWithLifecycle(initialValue = null)
+    val sessionExpired by sessionViewModel.sessionExpired.collectAsStateWithLifecycle()
     val availableUpdate by sessionViewModel.availableUpdate.collectAsStateWithLifecycle()
 
     // Update checks must not depend on being signed in — a broken sign-in is
@@ -136,7 +137,7 @@ fun AppRoot(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        false -> LoginScreen(onLoggedIn = { /* isLoggedIn flow flips the gate */ })
+        false -> LoginScreen(onLoggedIn = { /* isLoggedIn flow flips the gate */ }, sessionExpired = sessionExpired)
         true -> MainApp(loggedIn, sessionViewModel, darkTheme, onToggleTheme)
     }
 
@@ -175,6 +176,7 @@ class SessionViewModel @Inject constructor(
     val isLoggedIn: StateFlow<Boolean?> = authRepository.isLoggedIn.stateIn(
         viewModelScope, SharingStarted.Eagerly, null,
     )
+    val sessionExpired: StateFlow<Boolean> = authRepository.sessionExpired
 
     fun refresh() {
         viewModelScope.launch {

@@ -13,9 +13,11 @@ data class ExpenseLine(
     val payerName: String,
     val canDelete: Boolean = true,
     val payerCount: Int = 1,
+    val splitType: String = "EQUAL",
     val amountMinor: Long,
     val myShareMinor: Long,
     val participantCount: Int,
+    val participantIds: List<String> = emptyList(),
     val createdAt: Long,
 )
 
