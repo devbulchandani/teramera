@@ -38,6 +38,8 @@ const ACCESS_TTL_MINUTES = 15;
 
 const METHODS = new Set(["UPI", "CASH", "BANK"]);
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function jwtDeps(env: Env) {
     if (!env.JWT_SECRET) throw new HttpError(500, "Server misconfigured: JWT_SECRET not set");
     return {
@@ -106,6 +108,7 @@ app.get("/", (c) => {
  <small>Version ${versionName} (build ${versionCode}) · Android 8.0+<br>
  Already installed? teramera updates itself — no app store needed.</small>
 </div></body></html>`;
+    applyPublicPageHeaders(c);
     return c.html(html);
 });
 
@@ -181,6 +184,16 @@ function escapeHtml(value: string): string {
 
 function originOf(c: any): string {
     return c.env.APP_BASE_URL || new URL(c.req.url).origin;
+}
+
+/** Lock down the static public HTML pages (inline styles only, no scripts). */
+function applyPublicPageHeaders(c: any) {
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Referrer-Policy", "no-referrer");
+    c.header(
+        "Content-Security-Policy",
+        "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    );
 }
 
 /**
@@ -586,9 +599,15 @@ app.post("/groups/:groupId/invite-email", async (c) => {
 
 /** Public landing for invite links. */
 app.get("/invite/:groupId", async (c) => {
+    applyPublicPageHeaders(c);
     const groupId = c.req.param("groupId");
+    if (!UUID_RE.test(groupId)) return c.text("Invite not found", 404);
+    const [group] = await rows<GroupRow>(c, "SELECT id FROM groups WHERE id = ?", groupId);
+    if (!group) return c.text("Invite not found", 404);
     const origin = originOf(c);
     const apkUrl = c.env.APK_DOWNLOAD_URL || `${origin}/teramera.apk`;
+    const safeGroupId = escapeHtml(groupId);
+    const safeApkUrl = escapeHtml(apkUrl);
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>teramera — group invite</title>
@@ -611,8 +630,8 @@ app.get("/invite/:groupId", async (c) => {
  <div class="logo"><span class="tere">tere</span><span class="mera">mera</span></div>
  <h1>You've been invited to a group</h1>
  <p>Split expenses with friends fairly — add expenses your way, settle up in the fewest payments possible.</p>
- <a class="btn btn-primary" href="intent://invite/${groupId}#Intent;scheme=teramera;package=com.example.teramera;S.browser_fallback_url=${encodeURIComponent(apkUrl)};end">Open in app &amp; join</a>
- <a class="btn btn-secondary" href="${apkUrl}">Download the app first</a>
+ <a class="btn btn-primary" href="intent://invite/${safeGroupId}#Intent;scheme=teramera;package=com.example.teramera;S.browser_fallback_url=${encodeURIComponent(apkUrl)};end">Open in app &amp; join</a>
+ <a class="btn btn-secondary" href="${safeApkUrl}">Download the app first</a>
  <small>Opening the link above joins this group automatically after you sign in.</small>
 </div></body></html>`;
     return c.html(html);
