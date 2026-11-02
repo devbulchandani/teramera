@@ -376,6 +376,48 @@ def run_checks():
         balances,
     )
 
+    # ---- group-less authorization: caller must be involved ----
+    call(
+        "POST",
+        "/expenses",
+        {
+            "groupId": None,
+            "title": "Forged debt",
+            "amountMinor": 1000,
+            "splitType": "EQUAL",
+            "participantIds": ["user-b", "user-c"],
+            "payments": [{"userId": "user-b", "amountMinor": 1000}],
+        },
+        expect=403,
+    )
+    check("outsider cannot fabricate a personal debt", True)
+    call(
+        "POST",
+        "/expenses",
+        {
+            "groupId": None,
+            "title": "Accepted debt",
+            "amountMinor": 1000,
+            "splitType": "EQUAL",
+            "participantIds": ["user-a", "user-b"],
+            "payments": [{"userId": "user-b", "amountMinor": 1000}],
+        },
+    )
+    check("participant can accept a debt paid by someone else", True)
+    call(
+        "POST",
+        "/expenses",
+        {
+            "groupId": None,
+            "title": "Shared lunch",
+            "amountMinor": 700,
+            "splitType": "EQUAL",
+            "participantIds": ["user-a", "user-b"],
+            "paidByUserId": "user-a",
+        },
+    )
+    check("payer may split a personal expense with another member", True)
+
     # ---- friend lookup by email (what the add-expense picker calls) ----
     found = call("GET", "/users/find?email=user-c@example.com")
     check("find user by email", found["id"] == "user-c", found)
