@@ -726,26 +726,26 @@ app.get("/groups", async (c) => {
 
     // batched: one query each for expenses, shares and settlements across all my groups
     const groupIds = list.map((g) => g.id);
-    const expenses = await rows<Row>(
+    const expenses = await rowsByIds<Row>(
         c,
-        `SELECT group_id, id, paid_by_user_id, amount_minor FROM expenses
-         WHERE group_id IN (${groupIds.map(() => "?").join(",")})`,
-        ...groupIds,
+        (n) => `SELECT group_id, id, paid_by_user_id, amount_minor FROM expenses
+         WHERE group_id IN (${placeholders(n)})`,
+        groupIds,
     );
     const shares = expenses.length > 0
-        ? await rows<Row>(
+        ? await rowsByIds<Row>(
               c,
-              `SELECT s.expense_id, s.user_id, s.share_amount_minor, e.group_id FROM expense_shares s
+              (n) => `SELECT s.expense_id, s.user_id, s.share_amount_minor, e.group_id FROM expense_shares s
                JOIN expenses e ON e.id = s.expense_id
-               WHERE e.group_id IN (${groupIds.map(() => "?").join(",")})`,
-              ...groupIds,
+               WHERE e.group_id IN (${placeholders(n)})`,
+              groupIds,
           )
         : [];
-    const settlements = await rows<Row>(
+    const settlements = await rowsByIds<Row>(
         c,
-        `SELECT group_id, payer_user_id, paid_to_user_id, amount_minor FROM settlements
-         WHERE group_id IN (${groupIds.map(() => "?").join(",")})`,
-        ...groupIds,
+        (n) => `SELECT group_id, payer_user_id, paid_to_user_id, amount_minor FROM settlements
+         WHERE group_id IN (${placeholders(n)})`,
+        groupIds,
     );
 
     const spentByGroup = new Map<string, number>();
@@ -784,11 +784,11 @@ async function groupBalances(c: any, groupId: string): Promise<{ userId: string;
     const net = new Map<string, number>();
     const expenses = await rows<Row>(c, "SELECT id, paid_by_user_id, amount_minor FROM expenses WHERE group_id = ?", groupId);
     if (expenses.length > 0) {
-        const shares = await rows<Row>(
+        const shares = await rowsByIds<Row>(
             c,
-            `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
-             WHERE expense_id IN (${expenses.map(() => "?").join(",")})`,
-            ...expenses.map((e) => e.id),
+            (n) => `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
+             WHERE expense_id IN (${placeholders(n)})`,
+            expenses.map((e) => e.id),
         );
         // Count each payment exactly once — adding it inside the share loop would
         // multiply a payer's credit by their number of participants.
@@ -847,11 +847,11 @@ app.get("/groups/:groupId/detail", async (c) => {
         groupId,
     );
     const shares = expenses.length > 0
-        ? await rows<Row>(
+        ? await rowsByIds<Row>(
               c,
-              `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
-               WHERE expense_id IN (${expenses.map(() => "?").join(",")})`,
-              ...expenses.map((e) => e.id),
+              (n) => `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
+               WHERE expense_id IN (${placeholders(n)})`,
+              expenses.map((e) => e.id),
           )
         : [];
     const sharesByExpense = new Map<string, Row[]>();
@@ -925,11 +925,11 @@ app.get("/groups/:groupId/expenses", async (c) => {
         groupId,
     );
     if (expenses.length === 0) return c.json([]);
-    const shares = await rows<Row>(
+    const shares = await rowsByIds<Row>(
         c,
-        `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
-         WHERE expense_id IN (${expenses.map(() => "?").join(",")})`,
-        ...expenses.map((e) => e.id),
+        (n) => `SELECT expense_id, user_id, share_amount_minor FROM expense_shares
+         WHERE expense_id IN (${placeholders(n)})`,
+        expenses.map((e) => e.id),
     );
     const sharesByExpense = new Map<string, Row[]>();
     for (const s of shares) {
@@ -1150,10 +1150,10 @@ app.patch("/expenses/:expenseId", async (c) => {
 
     // Participants: an explicit list or raw-value map wins, else keep whoever was split.
     const siblingIds = siblings.map((s) => s.id);
-    const existingShares = await rows<Row>(
+    const existingShares = await rowsByIds<Row>(
         c,
-        `SELECT user_id, share_amount_minor FROM expense_shares WHERE expense_id IN (${siblingIds.map(() => "?").join(",")})`,
-        ...siblingIds,
+        (n) => `SELECT user_id, share_amount_minor FROM expense_shares WHERE expense_id IN (${placeholders(n)})`,
+        siblingIds,
     );
     let participantIds: string[] = (body.participantIds ?? []).filter(Boolean);
     if (participantIds.length === 0 && body.participants) {
