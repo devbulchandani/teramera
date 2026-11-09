@@ -50,10 +50,11 @@ class TokenAuthenticator @Inject constructor(
                 // DNS failure or 5xx must not sign the user out — they may be offline.
                 val error = outcome.exceptionOrNull()
                 if (error is HttpException && (error.code() == 401 || error.code() == 400)) {
-                    runBlocking {
-                        tokenStore.clear()
-                        tokenStore.markSessionExpired()
-                    }
+                    // Definitive rejection: persist Expired so the UI explains it.
+                    runBlocking { tokenStore.reject() }
+                } else {
+                    // Transient: keep the session and retry on the next request.
+                    tokenStore.markRefreshDelayed()
                 }
                 return null
             }
@@ -67,7 +68,11 @@ class TokenAuthenticator @Inject constructor(
             }
             // Without a durable save the retry would use a token the next request
             // cannot see. Fail closed; the server grace window protects the session.
-            if (!saved) return null
+            if (!saved) {
+                tokenStore.markRefreshDelayed()
+                return null
+            }
+            tokenStore.clearRefreshDelayed()
 
             return response.request.newBuilder()
                 .header("Authorization", "Bearer ${refreshed.accessToken}")

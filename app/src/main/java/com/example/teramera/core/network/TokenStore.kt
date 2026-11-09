@@ -8,12 +8,17 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.teramera.core.auth.SessionFacts
+import com.example.teramera.core.auth.SessionState
+import com.example.teramera.core.auth.SignedOutReason
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,27 +38,32 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
     private val totalSpentKey = longPreferencesKey("total_spent_minor")
     private val expenseCountKey = intPreferencesKey("expense_count")
     private val cacheEpochKey = intPreferencesKey("cache_epoch")
+    private val signedOutReasonKey = stringPreferencesKey("signed_out_reason")
 
     // Interceptors run on OkHttp threads and cannot suspend. A small in-memory
     // mirror keeps them off DataStore (and off runBlocking) on the hot path.
     @Volatile private var cachedTokens: AuthTokens? = null
     @Volatile private var cachePrimed = false
+    private val refreshDelayed = MutableStateFlow(false)
 
-    private val _sessionExpired = MutableStateFlow(false)
-    override val sessionExpired: StateFlow<Boolean> = _sessionExpired
-
-    val tokens: Flow<AuthTokens?> = context.tokenDataStore.data.map { prefs ->
-        val access = prefs[accessKey]
-        val refresh = prefs[refreshKey]
-        val value = if (access != null && refresh != null) {
-            AuthTokens(access, refresh, prefs[userIdKey] ?: "")
-        } else {
-            null
-        }
-        cachedTokens = value
+    /** Single reader for persisted tokens; also keeps the interceptor cache warm. */
+    private val cachedPrefs: Flow<Preferences> = context.tokenDataStore.data.onEach { prefs ->
+        cachedTokens = tokensOf(prefs)
         cachePrimed = true
-        value
     }
+
+    val tokens: Flow<AuthTokens?> = cachedPrefs.map(::tokensOf)
+
+    override val session: Flow<SessionState> =
+        combine(cachedPrefs, refreshDelayed) { prefs, delayed ->
+            SessionFacts(
+                restoring = false,
+                hasTokens = tokensOf(prefs) != null,
+                userId = prefs[userIdKey] ?: "",
+                signedOutReason = prefs[signedOutReasonKey]?.toSignedOutReason(),
+                refreshDelayed = delayed,
+            ).toState()
+        }.onStart { emit(SessionState.Restoring) }
 
     /** Profile picture URL from the Google account, when the provider returns one. */
     val avatarUrl: Flow<String?> = context.tokenDataStore.data.map { it[avatarKey] }
@@ -100,28 +110,39 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
                 prefs.remove(totalSpentKey)
                 prefs.remove(expenseCountKey)
             }
+            prefs.remove(signedOutReasonKey)
         }
         // Publish immediately so the next request cannot race the DataStore
         // collector and go out with the previous (now rotated) access token.
         cachedTokens = tokens
         cachePrimed = true
-        _sessionExpired.value = false
+        refreshDelayed.value = false
     }
 
     override suspend fun saveTokens(tokens: AuthTokens) = save(tokens)
 
-    override suspend fun clear() {
-        context.tokenDataStore.edit { it.clear() }
+    /** Explicit sign-out: remember why so the next launch can explain it. */
+    override suspend fun clear() = clearWithReason(SignedOutReason.Manual)
+
+    /** The server rejected the refresh token: remember the reason across restarts. */
+    override suspend fun reject() = clearWithReason(SignedOutReason.Expired)
+
+    private suspend fun clearWithReason(reason: SignedOutReason) {
+        context.tokenDataStore.edit { prefs ->
+            prefs.clear()
+            prefs[signedOutReasonKey] = reason.name
+        }
         cachedTokens = null
         cachePrimed = true
+        refreshDelayed.value = false
     }
 
-    override fun markSessionExpired() {
-        _sessionExpired.value = true
+    override fun markRefreshDelayed() {
+        refreshDelayed.value = true
     }
 
-    override fun clearSessionExpired() {
-        _sessionExpired.value = false
+    override fun clearRefreshDelayed() {
+        refreshDelayed.value = false
     }
 
     /** Non-suspending snapshot for OkHttp interceptors. */
@@ -133,4 +154,13 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
         if (cachePrimed) return null
         return tokens.first()
     }
+
+    private fun tokensOf(prefs: Preferences): AuthTokens? {
+        val access = prefs[accessKey] ?: return null
+        val refresh = prefs[refreshKey] ?: return null
+        return AuthTokens(access, refresh, prefs[userIdKey] ?: "")
+    }
 }
+
+private fun String.toSignedOutReason(): SignedOutReason? =
+    runCatching { SignedOutReason.valueOf(this) }.getOrNull()
