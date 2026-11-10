@@ -36,6 +36,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.teramera.BuildConfig
+import com.example.teramera.core.auth.SignedOutReason
 import com.example.teramera.core.network.userMessage
 import com.example.teramera.ui.components.Baanto
 import com.example.teramera.ui.components.BaantoState
@@ -51,7 +52,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen(
     onLoggedIn: () -> Unit,
-    sessionExpired: Boolean = false,
+    signedOutReason: SignedOutReason? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -163,7 +164,11 @@ fun LoginScreen(
         Spacer(Modifier.height(8.dp))
 
         ErrorBanner(
-            state.error ?: if (sessionExpired) "Your session expired. Sign in again to continue." else null,
+            state.error ?: if (signedOutReason == SignedOutReason.Expired) {
+                "Your session expired. Sign in again to continue."
+            } else {
+                null
+            },
             state.offerAddAccount,
             addGoogleAccount,
         )

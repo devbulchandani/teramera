@@ -1,15 +1,15 @@
 package com.example.teramera.core.network
 
+import com.example.teramera.core.auth.SessionState
+import com.example.teramera.core.auth.SignedOutReason
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.sun.net.httpserver.HttpServer
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -23,27 +23,42 @@ class TokenAuthenticatorTest {
         @Volatile var tokens: AuthTokens? = initial
         val clears = AtomicInteger()
         val saves = AtomicInteger()
-        private val expired = MutableStateFlow(false)
-        override val sessionExpired: StateFlow<Boolean> = expired
+        val rejects = AtomicInteger()
+        private val state = MutableStateFlow<SessionState>(
+            initial?.let { SessionState.SignedIn(it.userId) }
+                ?: SessionState.SignedOut(SignedOutReason.Never),
+        )
+        override val session: Flow<SessionState> = state
+        val currentSession: SessionState get() = state.value
 
         override suspend fun current(): AuthTokens? = tokens
 
         override suspend fun saveTokens(tokens: AuthTokens) {
             this.tokens = tokens
+            state.value = SessionState.SignedIn(tokens.userId)
             saves.incrementAndGet()
         }
 
         override suspend fun clear() {
             tokens = null
+            state.value = SessionState.SignedOut(SignedOutReason.Manual)
             clears.incrementAndGet()
         }
 
-        override fun markSessionExpired() {
-            expired.value = true
+        override suspend fun reject() {
+            tokens = null
+            state.value = SessionState.SignedOut(SignedOutReason.Expired)
+            rejects.incrementAndGet()
         }
 
-        override fun clearSessionExpired() {
-            expired.value = false
+        override fun markRefreshDelayed() {
+            state.value = (state.value as? SessionState.SignedIn)
+                ?.copy(refreshDelayed = true) ?: state.value
+        }
+
+        override fun clearRefreshDelayed() {
+            state.value = (state.value as? SessionState.SignedIn)
+                ?.copy(refreshDelayed = false) ?: state.value
         }
     }
 
@@ -102,8 +117,11 @@ class TokenAuthenticatorTest {
 
             // original request + exactly one refresh attempt; the old bug looped forever
             assertEquals(2, server.requests.get())
-            assertEquals(1, store.clears.get())
-            assertTrue(store.sessionExpired.value)
+            assertEquals(1, store.rejects.get())
+            assertEquals(
+                SessionState.SignedOut(SignedOutReason.Expired),
+                store.currentSession,
+            )
         } finally {
             server.stop()
         }
@@ -125,7 +143,7 @@ class TokenAuthenticatorTest {
                 .use { assertEquals(401, it.code) }
 
             assertEquals(2, server.requests.get())
-            assertEquals(1, store.clears.get())
+            assertEquals(1, store.rejects.get())
         } finally {
             server.stop()
         }
@@ -158,7 +176,8 @@ class TokenAuthenticatorTest {
             assertEquals("new-refresh", store.tokens?.refreshToken)
             assertEquals(1, store.saves.get())
             assertEquals(0, store.clears.get())
-            assertFalse(store.sessionExpired.value)
+            assertEquals(0, store.rejects.get())
+            assertEquals(SessionState.SignedIn("user-a"), store.currentSession)
         } finally {
             server.stop()
         }
@@ -183,8 +202,12 @@ class TokenAuthenticatorTest {
             ).execute().use { assertEquals(401, it.code) }
 
             assertEquals(0, store.clears.get())
+            assertEquals(0, store.rejects.get())
             assertEquals("old-refresh", store.tokens?.refreshToken)
-            assertFalse(store.sessionExpired.value)
+            assertEquals(
+                SessionState.SignedIn("user-a", refreshDelayed = true),
+                store.currentSession,
+            )
         } finally {
             server.stop()
         }

@@ -71,6 +71,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.teramera.BuildConfig
 import com.example.teramera.core.auth.AuthRepository
+import com.example.teramera.core.auth.SessionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -113,16 +114,15 @@ fun AppRoot(
     onToggleTheme: () -> Unit = {},
 ) {
     val sessionViewModel: SessionViewModel = hiltViewModel()
-    val loggedIn by sessionViewModel.isLoggedIn.collectAsStateWithLifecycle(initialValue = null)
-    val sessionExpired by sessionViewModel.sessionExpired.collectAsStateWithLifecycle()
+    val session by sessionViewModel.session.collectAsStateWithLifecycle(initialValue = SessionState.Restoring)
     val availableUpdate by sessionViewModel.availableUpdate.collectAsStateWithLifecycle()
 
     // Update checks must not depend on being signed in — a broken sign-in is
     // exactly when a newer build matters most.
     androidx.compose.runtime.LaunchedEffect(Unit) { sessionViewModel.checkForUpdate() }
 
-    when (loggedIn) {
-        null -> Column(
+    when (val current = session) {
+        SessionState.Restoring -> Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
@@ -137,8 +137,11 @@ fun AppRoot(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        false -> LoginScreen(onLoggedIn = { /* isLoggedIn flow flips the gate */ }, sessionExpired = sessionExpired)
-        true -> MainApp(loggedIn, sessionViewModel, darkTheme, onToggleTheme)
+        is SessionState.SignedOut -> LoginScreen(
+            onLoggedIn = { /* the session flow flips the gate */ },
+            signedOutReason = current.reason,
+        )
+        is SessionState.SignedIn -> MainApp(sessionViewModel, darkTheme, onToggleTheme)
     }
 
     availableUpdate?.let { update ->
@@ -173,10 +176,9 @@ class SessionViewModel @Inject constructor(
 
     private val _availableUpdate = MutableStateFlow<com.example.teramera.core.update.UpdateInfo?>(null)
     val availableUpdate: StateFlow<com.example.teramera.core.update.UpdateInfo?> = _availableUpdate
-    val isLoggedIn: StateFlow<Boolean?> = authRepository.isLoggedIn.stateIn(
-        viewModelScope, SharingStarted.Eagerly, null,
+    val session: StateFlow<SessionState> = authRepository.session.stateIn(
+        viewModelScope, SharingStarted.Eagerly, SessionState.Restoring,
     )
-    val sessionExpired: StateFlow<Boolean> = authRepository.sessionExpired
 
     fun refresh() {
         viewModelScope.launch {
@@ -232,7 +234,6 @@ class SessionViewModel @Inject constructor(
 
 @Composable
 private fun MainApp(
-    loggedIn: Boolean?,
     sessionViewModel: SessionViewModel,
     darkTheme: Boolean,
     onToggleTheme: () -> Unit,
@@ -269,7 +270,7 @@ private fun MainApp(
     // invites require explicit confirmation — a malicious app could fire the deep link
     val uuidLike = remember { Regex("^[0-9a-fA-F-]{8,64}$") }
     val validInvite = pendingInvite?.takeIf { uuidLike.matches(it) }
-    if (loggedIn == true && validInvite != null) {
+    if (validInvite != null) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = {
                 pendingInvite = null

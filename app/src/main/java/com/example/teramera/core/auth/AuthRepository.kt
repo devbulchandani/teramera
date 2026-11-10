@@ -1,13 +1,14 @@
 package com.example.teramera.core.auth
 
+import com.example.teramera.core.network.AuthApi
 import com.example.teramera.core.network.AuthTokens
 import com.example.teramera.core.network.GoogleLoginRequestDto
 import com.example.teramera.core.network.LogoutRequestDto
 import com.example.teramera.core.network.TokenStore
-import com.example.teramera.core.network.AuthApi
+import com.example.teramera.core.network.userMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import retrofit2.HttpException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,11 +20,8 @@ class AuthRepository @Inject constructor(
     private val dao: com.example.teramera.data.local.TerameraDao,
 ) {
 
-    /** null while the session state is being restored, true/false once known. */
-    val isLoggedIn: Flow<Boolean?> = tokenStore.tokens.map { it != null }
-
-    /** Set when the backend definitively rejected the refresh token. */
-    val sessionExpired: StateFlow<Boolean> = tokenStore.sessionExpired
+    /** The explicit session state machine; screens render this, not booleans. */
+    val session: Flow<SessionState> = tokenStore.session
 
     suspend fun googleLogin(idToken: String, avatarUrl: String? = null): Result<Unit> =
         try {
@@ -38,13 +36,27 @@ class AuthRepository @Inject constructor(
                 clearAvatar = true,
             )
             Result.success(Unit)
-        } catch (e: retrofit2.HttpException) {
-            // surface the backend's human-readable reason (audience mismatch etc.)
-            val bodyMessage = e.response()?.errorBody()?.string()?.let { body ->
-                runCatching { org.json.JSONObject(body).optString("message") }.getOrNull()
-            }
-            Result.failure(Exception(bodyMessage ?: "Sign-in failed"))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(loginFailure(e))
         }
+
+    /**
+     * Every failure mode becomes a user-readable [Result.failure] — offline,
+     * timeout and TLS errors used to escape and crash the sign-in coroutine.
+     */
+    private fun loginFailure(error: Throwable): Exception {
+        val message = when (error) {
+            is HttpException -> runCatching {
+                error.response()?.errorBody()?.string()?.let { body ->
+                    org.json.JSONObject(body).optString("message").takeIf { it.isNotBlank() }
+                }
+            }.getOrNull() ?: "Sign-in failed"
+            else -> error.userMessage("Sign-in failed")
+        }
+        return Exception(message)
+    }
 
     suspend fun logout() {
         // best effort: revoke the refresh token server-side, then wipe local caches
@@ -52,7 +64,6 @@ class AuthRepository @Inject constructor(
             runCatching { authApi.logout(LogoutRequestDto(tokens.refreshToken)) }
         }
         tokenStore.clear()
-        tokenStore.clearSessionExpired()
         spendStore.clear()
         dao.clearAccountData()
     }
