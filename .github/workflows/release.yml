@@ -34,7 +34,7 @@ jobs:
           echo "Resolving ${{ steps.tag.outputs.name }}"
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -59,7 +59,7 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      # Wrapper expects local.properties; we don't need real values for `assembleDebug`,
+      # Wrapper expects local.properties; we don't need real values for `assembleRelease`,
       # but the file must exist because Google Sign-In keys are wired through it.
       - name: Stub local.properties
         run: |
@@ -76,7 +76,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          CURRENT_VC=$(grep -E '^\s*versionCode\s*=' app/build.gradle.kts | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/')
+          CURRENT_VC=$(grep -E '^[[:space:]]*versionCode[[:space:]]*=' app/build.gradle.kts | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/')
           echo "Current versionCode=${CURRENT_VC}"
 
           # Sort existing release tags and pick the most recent v* tag (excluding ours).
@@ -90,8 +90,8 @@ jobs:
           fi
 
           PREV_VC=$(git show "${PREV_TAG}:app/build.gradle.kts" 2>/dev/null \
-            | grep -E '^\s*versionCode\s*=' \
-            | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/' \
+            | grep -E '^[[:space:]]*versionCode[[:space:]]*=' \
+            | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/' \
             | head -1)
           PREV_VC=${PREV_VC:-0}
           echo "Previous versionCode=${PREV_VC}"
@@ -100,6 +100,19 @@ jobs:
             echo "::error::versionCode ${CURRENT_VC} is not greater than previous tag ${PREV_TAG}'s ${PREV_VC}. Bump it in app/build.gradle.kts."
             exit 1
           fi
+
+      # `/app/version` is served from wrangler vars, not from the APK. If they
+      # drift, existing installs are never offered the update.
+      - name: Sanity — Worker version vars match the APK
+        run: |
+          set -e
+          APP_VC=$(grep -E '^[[:space:]]*versionCode[[:space:]]*=' app/build.gradle.kts | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/')
+          APP_VN=$(grep -E '^[[:space:]]*versionName[[:space:]]*=' app/build.gradle.kts | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')
+          CF_VC=$(grep -E '"APP_VERSION_CODE"' worker/wrangler.jsonc | sed -E 's/.*"APP_VERSION_CODE"[[:space:]]*:[[:space:]]*"([0-9]+)".*/\1/')
+          CF_VN=$(grep -E '"APP_VERSION_NAME"' worker/wrangler.jsonc | sed -E 's/.*"APP_VERSION_NAME"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+          echo "APK: ${APP_VC} (${APP_VN}) · Worker: ${CF_VC} (${CF_VN})"
+          [ "${APP_VC}" = "${CF_VC}" ] || { echo "::error::worker APP_VERSION_CODE (${CF_VC}) != app versionCode (${APP_VC})"; exit 1; }
+          [ "${APP_VN}" = "${CF_VN}" ] || { echo "::error::worker APP_VERSION_NAME (${CF_VN}) != app versionName (${APP_VN})"; exit 1; }
 
       # The published APK must be signed with the release key, otherwise every
       # in-app update installs a build Android won't accept over the old one.
@@ -147,16 +160,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          set -e
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
-            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets missing — skipping wrangler deploy. Asset uploaded via gh release below."
-            exit 0
+            echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required to publish a release."
+            exit 1
           fi
-          # best-effort: a stale OAuth token will fail with 'Authentication
-          # error [code: 10000]'. Warn and continue so the release + APK ship
-          # still succeed; re-deploy manually after refreshing the token.
-          if ! npx --yes wrangler deploy; then
-            echo "::warning::wrangler deploy failed (likely an expired OAuth token). Re-run after refreshing CLOUDFLARE_API_TOKEN."
-          fi
+          npx --yes wrangler deploy
 
       - name: Commit updated worker APK
         continue-on-error: true
