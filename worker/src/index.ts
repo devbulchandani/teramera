@@ -85,7 +85,7 @@ app.get("/", (c) => {
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>teramera — split expenses with friends</title>
-<meta name="description" content="Split expenses with friends, keep every balance fair, and settle up in the fewest payments possible.">
+<meta name="description" content="Split expenses with friends, keep every balance fair, and settle up with fewer payments thanks to debt simplification.">
 <style>
  *{box-sizing:border-box}
  body{font-family:-apple-system,system-ui,'Segoe UI',sans-serif;background:#FBF9F4;color:#251C15;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -107,7 +107,7 @@ app.get("/", (c) => {
  <div class="badge">ANDROID APP</div>
  <div class="logo"><span class="tere">tere</span><span class="mera">mera</span></div>
  <h1>Split expenses, skip the awkwardness</h1>
- <p>Add an expense however you like — equal, exact, shares or percent, even paid by several people. teramera keeps every balance fair and settles up in the fewest payments possible.</p>
+ <p>Add an expense however you like — equal, exact, shares or percent, even paid by several people. teramera keeps every balance fair and settles up with fewer payments thanks to debt simplification.</p>
  <a class="btn btn-primary" href="${apkUrl}">Download teramera</a>
  <ul>
   <li><b>Works offline.</b> Log expenses on a trip and sync when you're back.</li>
@@ -695,7 +695,7 @@ app.get("/invite/:groupId", async (c) => {
  <div class="badge">GROUP INVITE</div>
  <div class="logo"><span class="tere">tere</span><span class="mera">mera</span></div>
  <h1>You've been invited to a group</h1>
- <p>Split expenses with friends fairly — add expenses your way, settle up in the fewest payments possible.</p>
+ <p>Split expenses with friends fairly — add expenses your way, settle up with fewer payments thanks to debt simplification.</p>
  <a class="btn btn-primary" href="intent://invite/${safeGroupId}#Intent;scheme=teramera;package=com.example.teramera;S.browser_fallback_url=${encodeURIComponent(apkUrl)};end">Open in app &amp; join</a>
  <a class="btn btn-secondary" href="${safeApkUrl}">Download the app first</a>
  <small>Opening the link above joins this group automatically after you sign in.</small>
