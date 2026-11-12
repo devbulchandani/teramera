@@ -11,7 +11,8 @@ app:
   access-ttl-minutes: 15
   refresh-ttl-days: 30
   google-client-id: ${GOOGLE_CLIENT_ID:}
-  expose-dev-otp: true
+  # Reference app only. Tests opt in explicitly; never enable in a deployment.
+  expose-dev-otp: false
   db-mode: ${DB_MODE:local} # local (SQLite file) | d1 (Cloudflare D1 over HTTP)
   sqlite-path: ${SQLITE_PATH:./data/teramera.db}
   cloudflare:
