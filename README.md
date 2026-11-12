@@ -126,7 +126,7 @@ then open `http://localhost:8289/opendesign/`.
 ## Status & notes
 
 - v0.3.4 — Google-only auth, FCM push on settlements, speed pass
-- `EXPOSE_DEV_OTP` removed (no OTP paths remain)
+- Legacy `backend/` still contains the phone-OTP flow, but `expose-dev-otp` now defaults to `false`
 - Email invites still log to console when no SMTP/Resend key is configured; they reach mail when it is
 - Offline-created expenses stay local until a future sync pass; they support multi-payer and all four split types
 
