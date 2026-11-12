@@ -496,7 +496,20 @@ def run_checks():
     check("activity participants", big["participantCount"] == 2, big)
     check("no settlements yet", [e for e in activity if e["type"] == "settlement"] == [], activity)
 
-    # ---- settle the whole group debt ----
+    # ---- settle the whole group debt, but never more than is outstanding ----
+    call(
+        "POST",
+        "/settlements",
+        {
+            "groupId": gid,
+            "payerUserId": "user-b",
+            "paidToUserId": "user-a",
+            "amountMinor": 8001,
+            "method": "UPI",
+        },
+        expect=400,
+    )
+    check("group settlement over the outstanding balance is rejected", True)
     call(
         "POST",
         "/settlements",
@@ -508,6 +521,7 @@ def run_checks():
             "method": "UPI",
         },
     )
+    check("group settlement of the exact outstanding balance is accepted", True)
     detail = call("GET", f"/groups/{gid}/detail")
     nets = {b["userId"]: b["netMinor"] for b in detail["balances"]}
     check("group settled to zero", all(v == 0 for v in nets.values()), nets)
@@ -536,6 +550,20 @@ def run_checks():
         {b["userId"]: b["netMinor"] for b in balances} == {"user-b": 1500},
         balances,
     )
+    # user-b owes user-a 1500 from Coffee: overpaying is refused, exact is fine.
+    call(
+        "POST",
+        "/settlements",
+        {"payerUserId": "user-b", "paidToUserId": "user-a", "amountMinor": 1600, "method": "CASH"},
+        expect=400,
+    )
+    check("group-less settlement over the outstanding balance is rejected", True)
+    call(
+        "POST",
+        "/settlements",
+        {"payerUserId": "user-b", "paidToUserId": "user-a", "amountMinor": 1500, "method": "CASH"},
+    )
+    check("group-less settlement of the exact outstanding balance is accepted", True)
 
     # ---- group-less authorization: caller must be involved ----
     call(
@@ -697,6 +725,23 @@ def run_checks():
     detail = call("GET", f"/groups/{gid}/detail")
     check("delete removed both sibling rows", len(detail["expenses"]) == 1, detail["expenses"])
 
+    # ---- legacy expenses with parent_id NULL stay editable and deletable ----
+    legacy_id = str(uuid.uuid4())
+    legacy_now = int(time.time() * 1000)
+    d1(
+        "INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, "
+        "split_type, currency, fx_rate_to_group, created_at, parent_id, created_by) "
+        f"VALUES ('{legacy_id}', NULL, 'user-a', 'Legacy coffee', 1200, 'EQUAL', "
+        f"'INR', 1.0, {legacy_now}, NULL, 'user-a');"
+    )
+    d1(
+        "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) "
+        f"VALUES ('{legacy_id}', 'user-a', 1200);"
+    )
+    call("PATCH", f"/expenses/{legacy_id}", {"title": "Legacy coffee fixed"})
+    call("DELETE", f"/expenses/{legacy_id}")
+    check("legacy NULL-parent expense can be edited and deleted", True)
+
     # ---- placeholder members can be added and claimed on join ----
     g3 = call("POST", "/groups", {"name": "Placeholder test"})["id"]
     call("POST", f"/groups/{g3}/members", {"userId": "user-b"})
@@ -736,6 +781,20 @@ def run_checks():
     check("claimed placeholder cannot be claimed twice", True)
     call("DELETE", f"/groups/{g3}")
     check("placeholder test group cleaned up", True)
+
+    # ---- group creation validates every member before writing anything ----
+    call(
+        "POST",
+        "/groups",
+        {"name": "Ghost group", "memberUserIds": ["user-b", "ghost-user"]},
+        expect=400,
+    )
+    groups_now = call("GET", "/groups")
+    check(
+        "unknown member aborts group creation",
+        all(g["name"] != "Ghost group" for g in groups_now),
+        groups_now,
+    )
 
     # ---- group name bounds + invite email ----
     call("POST", "/groups", {"name": "a" * 81}, expect=400)
@@ -830,6 +889,28 @@ def run_checks():
     check("landing page shows the shipped version", version["versionName"] in landing)
     health = call("GET", "/health", tok="")
     check("health probe stays public json", health["status"] == "ok", health)
+
+    # ---- activity pages by logical expense and validates limit ----
+    activity_pair = call("POST", "/expenses", {
+        "title": "Activity pair",
+        "amountMinor": 4000,
+        "splitType": "EQUAL",
+        "participantIds": ["user-a", "user-b"],
+        "payments": [
+            {"userId": "user-a", "amountMinor": 2500},
+            {"userId": "user-b", "amountMinor": 1500},
+        ],
+    })
+    recent = call("GET", "/activity?limit=1")
+    check("activity limit returns one logical event", len(recent) == 1, recent)
+    check(
+        "activity limit keeps the full multi-payer amount",
+        recent[0].get("id") == activity_pair["id"] and recent[0].get("amountMinor") == 4000,
+        recent,
+    )
+    call("GET", "/activity?limit=abc")
+    call("GET", "/activity?limit=-1")
+    check("invalid activity limits fall back to the default", True)
 
     # ---- large group: IN(...) lookups must be chunked under D1's param cap ----
     large = call("POST", "/groups", {"name": "Large"})["id"]
