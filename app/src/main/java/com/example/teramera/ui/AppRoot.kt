@@ -72,6 +72,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.teramera.BuildConfig
 import com.example.teramera.core.auth.AuthRepository
 import com.example.teramera.core.auth.SessionState
+import com.example.teramera.core.network.DEFAULT_BASE_URL
 import dagger.hilt.android.lifecycle.HiltViewModel
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -401,7 +402,7 @@ private fun MainApp(
                         showAddExpense = true
                     },
                     onShareGroup = { groupName, groupId ->
-                        val link = "https://teramera-api.devbulchandani876.workers.dev/invite/$groupId"
+                        val link = "${DEFAULT_BASE_URL.trimEnd('/')}/invite/$groupId"
                         val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                             type = "text/plain"
                             putExtra(
