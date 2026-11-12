@@ -525,23 +525,31 @@ app.post("/groups", async (c) => {
     if (!name) return jsonError(c, 400, "name is required");
     if (name.length > 80) return jsonError(c, 400, "Name must be 80 characters or fewer");
 
-    const id = crypto.randomUUID();
-    await run(
-        c,
-        "INSERT INTO groups (id, name, currency, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
-        id, name, body.currency ?? "INR", c.get("userId"), Date.now(),
-    );
-    await run(c, "INSERT INTO memberships (group_id, user_id, role) VALUES (?, ?, 'member')", id, c.get("userId"));
-
-    for (const memberId of body.memberUserIds ?? []) {
+    const memberIds = body.memberUserIds ?? [];
+    // Validate everyone before writing anything: an unknown member must not
+    // leave behind a group with missing memberships.
+    for (const memberId of memberIds) {
         const exists = await rows(c, "SELECT 1 AS m FROM users WHERE id = ?", memberId);
         if (exists.length === 0) return jsonError(c, 400, `Unknown member: ${memberId}`);
-        await run(
-            c,
-            "INSERT OR IGNORE INTO memberships (group_id, user_id, role) VALUES (?, ?, 'member')",
-            id, memberId,
+    }
+
+    const id = crypto.randomUUID();
+    const statements = [
+        c.env.DB.prepare(
+            "INSERT INTO groups (id, name, currency, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+        ).bind(id, name, body.currency ?? "INR", c.get("userId"), Date.now()),
+        c.env.DB.prepare(
+            "INSERT INTO memberships (group_id, user_id, role) VALUES (?, ?, 'member')",
+        ).bind(id, c.get("userId")),
+    ];
+    for (const memberId of memberIds) {
+        statements.push(
+            c.env.DB.prepare(
+                "INSERT OR IGNORE INTO memberships (group_id, user_id, role) VALUES (?, ?, 'member')",
+            ).bind(id, memberId),
         );
     }
+    await c.env.DB.batch(statements);
     return c.json({ id, name, currency: body.currency ?? "INR" });
 });
 
@@ -884,6 +892,63 @@ async function groupBalances(c: any, groupId: string): Promise<{ userId: string;
         net.set(s.paid_to_user_id, (net.get(s.paid_to_user_id) ?? 0) - s.amount_minor);
     }
     return [...net.entries()].map(([userId, netMinor]) => ({ userId, netMinor }));
+}
+
+/**
+ * How much `payer` still owes `payee`, in the given group or the group-less
+ * pairwise ledger. Always >= 0; 0 means there is nothing to settle.
+ */
+async function outstandingBetween(
+    c: any,
+    payer: string,
+    payee: string,
+    groupId?: string | null,
+): Promise<number> {
+    if (groupId) {
+        const balances = await groupBalances(c, groupId);
+        const net = new Map(balances.map((b) => [b.userId, b.netMinor]));
+        const payerNet = net.get(payer) ?? 0;
+        const payeeNet = net.get(payee) ?? 0;
+        // payer must be a debtor and payee a creditor; only the overlap is payable.
+        return Math.max(0, Math.min(Math.max(0, -payerNet), Math.max(0, payeeNet)));
+    }
+
+    // Group-less expenses and settlements are pairwise. A share the payee
+    // covered for the payer raises the debt; the reverse cancels it.
+    const [payeeCovered] = await rows<Row>(
+        c,
+        `SELECT COALESCE(SUM(s.share_amount_minor), 0) AS total
+           FROM expense_shares s
+           JOIN expenses e ON e.id = s.expense_id
+          WHERE e.group_id IS NULL AND e.paid_by_user_id = ? AND s.user_id = ?`,
+        payee, payer,
+    );
+    const [payerCovered] = await rows<Row>(
+        c,
+        `SELECT COALESCE(SUM(s.share_amount_minor), 0) AS total
+           FROM expense_shares s
+           JOIN expenses e ON e.id = s.expense_id
+          WHERE e.group_id IS NULL AND e.paid_by_user_id = ? AND s.user_id = ?`,
+        payer, payee,
+    );
+    const [payerSettled] = await rows<Row>(
+        c,
+        `SELECT COALESCE(SUM(amount_minor), 0) AS total FROM settlements
+          WHERE group_id IS NULL AND payer_user_id = ? AND paid_to_user_id = ?`,
+        payer, payee,
+    );
+    const [payeeSettled] = await rows<Row>(
+        c,
+        `SELECT COALESCE(SUM(amount_minor), 0) AS total FROM settlements
+          WHERE group_id IS NULL AND payer_user_id = ? AND paid_to_user_id = ?`,
+        payee, payer,
+    );
+    const payable =
+        Number(payeeCovered?.total ?? 0) -
+        Number(payerCovered?.total ?? 0) -
+        Number(payerSettled?.total ?? 0) +
+        Number(payeeSettled?.total ?? 0);
+    return Math.max(0, payable);
 }
 
 /**
@@ -1238,30 +1303,35 @@ app.post("/expenses", async (c) => {
     // one shared parent id ties the per-payment rows of a logical expense together
     const parentId = crypto.randomUUID();
     const createdIds: string[] = [];
+    const statements: D1PreparedStatement[] = [];
     for (const payment of payments) {
         const id = crypto.randomUUID();
         const allocation = payments.length === 1
             ? new Map(totalShares.map((s) => [s.userId, s.amountMinor]))
             : allocatePayment(payment.amountMinor);
-        await run(
-            c,
-            `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at, parent_id, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            id, body.groupId ?? null, payment.userId, body.title.trim(),
-            payment.amountMinor, body.splitType, body.currency ?? "INR",
-            body.fxRateToGroup ?? 1.0, createdAt, parentId, userId,
+        statements.push(
+            c.env.DB.prepare(
+                `INSERT INTO expenses (id, group_id, paid_by_user_id, title, amount_minor, split_type, currency, fx_rate_to_group, created_at, parent_id, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ).bind(
+                id, body.groupId ?? null, payment.userId, body.title.trim(),
+                payment.amountMinor, body.splitType, body.currency ?? "INR",
+                body.fxRateToGroup ?? 1.0, createdAt, parentId, userId,
+            ),
         );
         for (const [uid, minor] of allocation.entries()) {
             if (minor > 0) {
-                await run(
-                    c,
-                    "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) VALUES (?, ?, ?)",
-                    id, uid, minor,
+                statements.push(
+                    c.env.DB.prepare(
+                        "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) VALUES (?, ?, ?)",
+                    ).bind(id, uid, minor),
                 );
             }
         }
         createdIds.push(id);
     }
+    // One batch = one transaction: a failure leaves no partial expense or shares.
+    await c.env.DB.batch(statements);
     // notify participants (except the payers, who did the adding) — best effort
     const actorIds = new Set(payments.map((p) => p.userId));
     if (c.env.FCM_PROJECT_ID && c.env.FCM_CLIENT_EMAIL && c.env.FCM_PRIVATE_KEY) {
@@ -1292,15 +1362,22 @@ app.patch("/expenses/:expenseId", async (c) => {
     const [expense] = await rows<Row>(c, "SELECT * FROM expenses WHERE id = ?", expenseId);
     if (!expense) return jsonError(c, 404, "Expense not found");
 
-    if (expense.parent_id == null) return jsonError(c, 409, "Expense is missing its parent link and cannot be edited");
+    // Legacy rows created before parent_id existed are self-parented: treat
+    // them as a single-row logical expense instead of making them read-only.
+    const hasParent = expense.parent_id != null;
+    const parentId = expense.parent_id ?? expense.id;
     if (expense.group_id) await requireMember(c, expense.group_id, userId);
     // all rows of a logical expense share an immutable parent_id
-    const siblings = await rows<Row>(c, "SELECT * FROM expenses WHERE parent_id = ?", expense.parent_id);
-    const [first] = await rows<Row>(
-        c,
-        "SELECT paid_by_user_id, created_by FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
-        expense.parent_id,
-    );
+    const siblings = hasParent
+        ? await rows<Row>(c, "SELECT * FROM expenses WHERE parent_id = ?", parentId)
+        : [expense];
+    const [first] = hasParent
+        ? await rows<Row>(
+              c,
+              "SELECT paid_by_user_id, created_by FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
+              parentId,
+          )
+        : [expense];
     if ((expense.created_by ?? first?.created_by ?? first?.paid_by_user_id) !== userId) {
         return jsonError(c, 403, "Only the person who added this expense can edit it");
     }
@@ -1398,10 +1475,16 @@ app.patch("/expenses/:expenseId", async (c) => {
         totalMinor,
         oldTotal,
     );
+    const statements: D1PreparedStatement[] = [];
     for (const sib of siblings) {
         const payerAmount = payerAmounts.get(sib.id) ?? 0;
-        await run(c, "UPDATE expenses SET title = ?, amount_minor = ? WHERE id = ?", title, payerAmount, sib.id);
-        await run(c, "DELETE FROM expense_shares WHERE expense_id = ?", sib.id);
+        statements.push(
+            c.env.DB.prepare("UPDATE expenses SET title = ?, amount_minor = ? WHERE id = ?")
+                .bind(title, payerAmount, sib.id),
+        );
+        statements.push(
+            c.env.DB.prepare("DELETE FROM expense_shares WHERE expense_id = ?").bind(sib.id),
+        );
         const allocation = siblings.length === 1
             ? new Map(targetShares.map((s) => [s.userId, s.amountMinor]))
             : allocateByWeight(
@@ -1411,14 +1494,16 @@ app.patch("/expenses/:expenseId", async (c) => {
             );
         for (const [uid, minor] of allocation.entries()) {
             if (minor > 0) {
-                await run(
-                    c,
-                    "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) VALUES (?, ?, ?)",
-                    sib.id, uid, minor,
+                statements.push(
+                    c.env.DB.prepare(
+                        "INSERT INTO expense_shares (expense_id, user_id, share_amount_minor) VALUES (?, ?, ?)",
+                    ).bind(sib.id, uid, minor),
                 );
             }
         }
     }
+    // Updates, share deletes and re-inserts land together or not at all.
+    await c.env.DB.batch(statements);
     return c.json({ status: "updated", id: expenseId, amountMinor: totalMinor });
 });
 
@@ -1428,17 +1513,23 @@ app.delete("/expenses/:expenseId", async (c) => {
     const [expense] = await rows<Row>(c, "SELECT * FROM expenses WHERE id = ?", expenseId);
     if (!expense) return jsonError(c, 404, "Expense not found");
 
-    if (expense.parent_id == null) return jsonError(c, 409, "Expense is missing its parent link and cannot be deleted");
+    // Legacy rows created before parent_id existed are self-parented.
+    const hasParent = expense.parent_id != null;
+    const parentId = expense.parent_id ?? expense.id;
     if (expense.group_id) await requireMember(c, expense.group_id, userId);
-    const [first] = await rows<Row>(
-        c,
-        "SELECT paid_by_user_id, created_by FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
-        expense.parent_id,
-    );
+    const [first] = hasParent
+        ? await rows<Row>(
+              c,
+              "SELECT paid_by_user_id, created_by FROM expenses WHERE parent_id = ? ORDER BY rowid LIMIT 1",
+              parentId,
+          )
+        : [expense];
     if ((expense.created_by ?? first?.created_by ?? first?.paid_by_user_id) !== userId) {
         return jsonError(c, 403, "Only the person who added this expense can delete it");
     }
-    const siblings = await rows<Row>(c, "SELECT id FROM expenses WHERE parent_id = ?", expense.parent_id);
+    const siblings = hasParent
+        ? await rows<Row>(c, "SELECT id FROM expenses WHERE parent_id = ?", parentId)
+        : [{ id: expense.id }];
 
     for (const sib of siblings) {
         await run(c, "DELETE FROM expense_shares WHERE expense_id = ?", sib.id);
@@ -1562,6 +1653,13 @@ app.post("/settlements", async (c) => {
         if (members.length !== 2) return jsonError(c, 403, "Both people must be group members");
     }
 
+    // Never let a client settle more than the payer actually owes the payee.
+    // Partial payments are still allowed; a zero balance is not payable at all.
+    const outstanding = await outstandingBetween(c, payer, body.paidToUserId, body.groupId ?? null);
+    if (outstanding <= 0 || body.amountMinor > outstanding) {
+        return jsonError(c, 400, "Amount exceeds the outstanding balance");
+    }
+
     await run(
         c,
         `INSERT INTO settlements (id, group_id, payer_user_id, paid_to_user_id, amount_minor, method, created_at)
@@ -1677,16 +1775,36 @@ app.get("/balances", async (c) => {
 /** Recent expenses + settlements across everything involving the caller. */
 app.get("/activity", async (c) => {
     const selfId = c.get("userId");
-    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+    // Reject anything that is not a sane integer; NaN or a negative would
+    // either 500 or make SQLite return an arbitrary page.
+    const rawLimit = c.req.query("limit");
+    const parsedLimit = rawLimit === undefined ? 50 : Number(rawLimit);
+    const limit = Number.isInteger(parsedLimit) && parsedLimit >= 1 && parsedLimit <= 100
+        ? parsedLimit
+        : 50;
 
-    const expenses = await rows<Row>(
+    // Page by *logical* expense before fetching rows. Limiting raw rows could
+    // cut a multi-payer expense in half and report a partial amount.
+    const parentRows = await rows<Row>(
         c,
-        `SELECT DISTINCT e.* FROM expenses e
-         LEFT JOIN expense_shares s ON s.expense_id = e.id
-         WHERE e.paid_by_user_id = ? OR s.user_id = ?
-         ORDER BY e.created_at DESC LIMIT ?`,
+        `SELECT COALESCE(e.parent_id, e.id) AS parent_key,
+                MAX(e.created_at) AS parent_created
+           FROM expenses e
+           LEFT JOIN expense_shares s ON s.expense_id = e.id
+          WHERE e.paid_by_user_id = ? OR s.user_id = ?
+          GROUP BY parent_key
+          ORDER BY parent_created DESC LIMIT ?`,
         selfId, selfId, limit,
     );
+    const parentKeys = parentRows.map((r) => r.parent_key as string);
+    // Fetch every sibling row for the chosen logical expenses, in chunks.
+    const expenses = parentKeys.length > 0
+        ? await rowsByIds<Row>(
+              c,
+              (n) => `SELECT * FROM expenses WHERE COALESCE(parent_id, id) IN (${placeholders(n)})`,
+              parentKeys,
+          )
+        : [];
     // One event per logical expense. Shares, payer names and group names are
     // batched so a page of activity costs four queries, not four per row.
     const expenseIds = expenses.map((e) => e.id);
