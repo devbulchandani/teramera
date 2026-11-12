@@ -18,9 +18,6 @@ local.properties
 backend/target/
 backend/data/
 
-# opendesign local server artifacts
-opendesign/index.html
-
 # misc
 *.log
 
@@ -44,3 +41,7 @@ scratch/
 # python bytecode
 __pycache__/
 *.pyc
+
+# build/serve artifacts
+docs/group-loading-fresh-session-prompt.md
+worker/public/teramera.apk

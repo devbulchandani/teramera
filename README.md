@@ -2,7 +2,7 @@
 
 **Money between friends, split fairly and settled simply.**
 
-teramera is an expense-splitting app for friends — create groups, add expenses any way you like (equal, exact, percent, shares), pay from multiple people, include only who's involved, and settle up in the fewest payments possible.
+teramera is an expense-splitting app for friends — create groups, add expenses any way you like (equal, exact, percent, shares), pay from multiple people, include only who's involved, and settle up with fewer payments thanks to debt simplification.
 
 - **Android app**: Kotlin + Jetpack Compose (Material 3), offline-first with Room
 - **Backend**: Cloudflare Worker (TypeScript/Hono) + Cloudflare D1 database
@@ -26,7 +26,7 @@ opendesign/ Design system + hi-fi mockups (opendesign plugin)
 - Expenses split **equal / exact / percent / shares**
 - **Multiple payers** per expense, each with their own amount
 - **Per-expense participants** — exclude anyone from a specific expense
-- Debt simplification: settle up in the minimum number of payments
+- Debt simplification: settle up with fewer payments
 - Activity feed, multi-currency amounts (paise-accurate), offline-first with sync
 - In-app updates: the app checks the server and prompts to download new builds
 

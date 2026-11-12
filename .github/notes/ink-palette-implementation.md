@@ -22,7 +22,7 @@ python3 -m http.server 8289   # then open http://localhost:8289/opendesign/
 
 > You are working in `teramera` (Android, Kotlin, Compose, Hilt, Room).
 > Implement the **teramera-ink** theme following
-> `docs/ink-palette-implementation.md`. Read that file first, then read
+> `.github/notes/ink-palette-implementation.md`. Read that file first, then read
 > `opendesign/design-systems/teramera-ink/tokens/colors_and_type.css` and the
 > prototypes in `opendesign/mockups/ink-system/`.
 >
