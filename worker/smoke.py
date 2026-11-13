@@ -90,6 +90,13 @@ def reset_db():
     shutil.rmtree(WORKER / ".wrangler" / "state", ignore_errors=True)
 
 
+def ensure_dev_vars():
+    """CI has no local secrets file; wrangler reads JWT_SECRET from .dev.vars."""
+    path = WORKER / ".dev.vars"
+    if not path.exists():
+        path.write_text(f"JWT_SECRET={SECRET}\n")
+
+
 def apply_schema():
     result = wrangler("d1", "execute", DB, "--local", "--file", "schema.sql", check=False)
     if result.returncode != 0:
@@ -955,6 +962,7 @@ def main():
             print(f"using the server already on {BASE}")
         else:
             print("resetting local D1 …")
+            ensure_dev_vars()
             free_port()
             reset_db()
             apply_schema()
