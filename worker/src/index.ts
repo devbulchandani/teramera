@@ -895,8 +895,23 @@ async function groupBalances(c: any, groupId: string): Promise<{ userId: string;
 }
 
 /**
- * How much `payer` still owes `payee`, in the given group or the group-less
- * pairwise ledger. Always >= 0; 0 means there is nothing to settle.
+ * How much `payer` can still pay `payee` inside one group, according to the
+ * *simplified* ledger the group screen shows. Raw nets are not enough: two
+ * positive/negative pairs can overlap (P owes 30, A is owed 30, Q owes 40,
+ * Y is owed 40) while the visible transfer is P→A and Q→Y, so a payment to Y
+ * booked against the raw overlap would reduce nobody's displayed debt.
+ */
+function settleableInGroup(net: Map<string, number>, payer: string, payee: string): number {
+    const transfer = simplifyDebts(net).transfers.find(
+        (t) => t.fromUserId === payer && t.toUserId === payee,
+    );
+    return transfer?.amountMinor ?? 0;
+}
+
+/**
+ * How much `payer` still owes `payee`, in the given group's simplified ledger
+ * or the group-less pairwise ledger. Always >= 0; 0 means there is nothing to
+ * settle.
  */
 async function outstandingBetween(
     c: any,
@@ -906,11 +921,7 @@ async function outstandingBetween(
 ): Promise<number> {
     if (groupId) {
         const balances = await groupBalances(c, groupId);
-        const net = new Map(balances.map((b) => [b.userId, b.netMinor]));
-        const payerNet = net.get(payer) ?? 0;
-        const payeeNet = net.get(payee) ?? 0;
-        // payer must be a debtor and payee a creditor; only the overlap is payable.
-        return Math.max(0, Math.min(Math.max(0, -payerNet), Math.max(0, payeeNet)));
+        return settleableInGroup(new Map(balances.map((b) => [b.userId, b.netMinor])), payer, payee);
     }
 
     // Group-less expenses and settlements are pairwise. A share the payee
@@ -1711,10 +1722,10 @@ async function allocateFriendSettlement(
         if (remaining <= 0) break;
         const net = nets.get(group.id as string);
         if (!net) continue;
-        // Only the overlap of "payer owes" and "payee is owed" is settleable here.
-        const payerOwes = Math.max(0, -(net.get(payer) ?? 0));
-        const payeeIsOwed = Math.max(0, net.get(payee) ?? 0);
-        const part = Math.min(remaining, Math.min(payerOwes, payeeIsOwed));
+        // Only a transfer the group screen actually shows for this pair is
+        // settleable: the raw overlap can exist while the simplified ledger
+        // routes that money through someone else.
+        const part = Math.min(remaining, settleableInGroup(net, payer, payee));
         if (part <= 0) continue;
         parts.push({
             groupId: group.id as string,
@@ -1769,10 +1780,7 @@ app.post("/settlements", async (c) => {
     if (body.groupId) {
         outstanding = await outstandingBetween(c, payer, body.paidToUserId, body.groupId);
     } else {
-        const callerIsPayer = payer === userId;
-        const callerNet = (await friendNets(c, userId))
-            .get(callerIsPayer ? body.paidToUserId : payer) ?? 0;
-        outstanding = callerIsPayer ? -callerNet : callerNet;
+        outstanding = -((await friendNets(c, payer)).get(body.paidToUserId) ?? 0);
     }
     if (outstanding <= 0 || body.amountMinor > outstanding) {
         return jsonError(c, 400, "Amount exceeds the outstanding balance");
@@ -1788,7 +1796,9 @@ app.post("/settlements", async (c) => {
     const allocatedMinor = allocations.reduce((acc, part) => acc + part.amountMinor, 0);
     const remainderMinor = body.amountMinor - allocatedMinor;
     if (!body.groupId && remainderMinor > 0) {
-        // Defensive: a remainder is only payable if the group-less ledger backs it.
+        // Invariant: the bound above is group transfers + pairwise, so a
+        // remainder always fits the pairwise ledger. Keep the guard so a future
+        // change to either path cannot mint credit out of nothing.
         const pairwise = await outstandingBetween(c, payer, body.paidToUserId, null);
         if (remainderMinor > pairwise) {
             return jsonError(c, 400, "Amount exceeds the outstanding balance");
