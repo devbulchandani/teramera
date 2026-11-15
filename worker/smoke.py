@@ -377,6 +377,264 @@ def run_debt_balance_checks():
     check("debt balance test group cleaned up", True)
 
 
+def run_settle_attribution_checks():
+    """A payment made from the friend ledger (Settle tab) must reach the groups.
+
+    Regression for #38: POST /settlements without a groupId used to write a
+    purely group-less row, so Home dropped while every group kept the old debt.
+    """
+
+    run_id = uuid.uuid4().hex[:8]
+
+    def seed_users(prefix, names):
+        ids = tuple(f"{prefix}-{index}" for index in range(len(names)))
+        d1(
+            "INSERT OR REPLACE INTO users (id, phone, email, name, created_at) VALUES "
+            + ", ".join(
+                f"('{uid}', NULL, '{uid}@example.com', '{name}', 0)"
+                for uid, name in zip(ids, names)
+            )
+            + ";"
+        )
+        return ids, [token(uid) for uid in ids]
+
+    def nets_of(detail):
+        return {b["userId"]: b["netMinor"] for b in detail["balances"]}
+
+    # ---- settle a debt from the friend ledger: it pays the groups that owe ----
+    (creditor, debtor), (tok_creditor, tok_debtor) = seed_users(f"attr-{run_id}", ["Asha", "Bhav"])
+    older = call("POST", "/groups", {"name": "Older trip"}, tok=tok_creditor)["id"]
+    call("POST", f"/groups/{older}/members", {"userId": debtor}, tok=tok_creditor)
+    call("POST", "/expenses", {
+        "groupId": older, "title": "Older dinner", "amountMinor": 50000,
+        "splitType": "EQUAL", "participantIds": [creditor, debtor], "paidByUserId": creditor,
+    }, tok=tok_creditor)
+    time.sleep(0.01)  # group age decides which debt a friend-level payment clears first
+    newer = call("POST", "/groups", {"name": "Newer trip"}, tok=tok_creditor)["id"]
+    call("POST", f"/groups/{newer}/members", {"userId": debtor}, tok=tok_creditor)
+    call("POST", "/expenses", {
+        "groupId": newer, "title": "Newer dinner", "amountMinor": 30000,
+        "splitType": "EQUAL", "participantIds": [creditor, debtor], "paidByUserId": creditor,
+    }, tok=tok_creditor)
+    # A group the debtor is not in must never absorb the payment.
+    outsider = call("POST", "/groups", {"name": "Outsider group"}, tok=tok_creditor)["id"]
+    call("POST", f"/groups/{outsider}/members", {"userId": "user-c"}, tok=tok_creditor)
+    call("POST", "/expenses", {
+        "groupId": outsider, "title": "Outsider lunch", "amountMinor": 10000,
+        "splitType": "EQUAL", "participantIds": [creditor, "user-c"], "paidByUserId": "user-c",
+    }, tok=tok_creditor)
+
+    balances = {b["userId"]: b["netMinor"] for b in call("GET", "/balances", tok=tok_creditor)}
+    check("friend balance spans both shared groups", balances.get(debtor) == 40000, balances)
+    group_nets = {g["id"]: g["netForMeMinor"] for g in call("GET", "/groups", tok=tok_creditor)}
+    check(
+        "group list agrees with the friend balance before settling",
+        group_nets[older] == 25000 and group_nets[newer] == 15000 and group_nets[outsider] == -5000,
+        group_nets,
+    )
+
+    # The debtor settles the whole friend balance from the Settle tab: 25000 of
+    # it is the older group's debt, which is exactly what the payment clears.
+    call("POST", "/settlements", {
+        "payerUserId": debtor, "paidToUserId": creditor, "amountMinor": 25000, "method": "UPI",
+    }, tok=tok_debtor)
+    older_detail = call("GET", f"/groups/{older}/detail", tok=tok_debtor)
+    newer_detail = call("GET", f"/groups/{newer}/detail", tok=tok_debtor)
+    outsider_detail = call("GET", f"/groups/{outsider}/detail", tok=tok_creditor)
+    check(
+        "oldest group cleared by the friend-level payment",
+        nets_of(older_detail) == {creditor: 0, debtor: 0},
+        older_detail["balances"],
+    )
+    check("oldest group has no transfers left", older_detail["simplifiedDebts"] == [], older_detail["simplifiedDebts"])
+    check(
+        "newer group keeps its own debt",
+        nets_of(newer_detail) == {creditor: 15000, debtor: -15000},
+        newer_detail["balances"],
+    )
+    check(
+        "a group the debtor is not in is untouched",
+        nets_of(outsider_detail) == {creditor: -5000, "user-c": 5000},
+        outsider_detail["balances"],
+    )
+    older_settles = call("GET", f"/settlements/groups/{older}", tok=tok_debtor)
+    check(
+        "payment is recorded against the group it paid",
+        len(older_settles) == 1 and older_settles[0]["amount_minor"] == 25000,
+        older_settles,
+    )
+    group_nets = {g["id"]: g["netForMeMinor"] for g in call("GET", "/groups", tok=tok_creditor)}
+    check(
+        "group list follows the payment",
+        group_nets[older] == 0 and group_nets[newer] == 15000,
+        group_nets,
+    )
+
+    call(
+        "POST",
+        "/settlements",
+        {"payerUserId": debtor, "paidToUserId": creditor, "amountMinor": 15001, "method": "UPI"},
+        tok=tok_debtor,
+        expect=400,
+    )
+    check("friend-level overpay is still rejected", True)
+    # The creditor can record the rest, exactly like the "owes you" flow.
+    call("POST", "/settlements", {
+        "payerUserId": debtor, "paidToUserId": creditor, "amountMinor": 15000, "method": "CASH",
+    }, tok=tok_creditor)
+    check(
+        "creditor can record the rest of a group debt",
+        nets_of(call("GET", f"/groups/{newer}/detail", tok=tok_creditor)) == {creditor: 0, debtor: 0},
+        newer,
+    )
+    balances = {b["userId"]: b["netMinor"] for b in call("GET", "/balances", tok=tok_creditor)}
+    check("friend balance clears once the groups are paid", balances.get(debtor, 0) == 0, balances)
+
+    # ---- one payment covering a group debt and a peer-to-peer debt ----
+    (mix_a, mix_b), (tok_a, tok_b) = seed_users(f"mix-{run_id}", ["Chet", "Diya"])
+    mixed = call("POST", "/groups", {"name": "Mixed group"}, tok=tok_a)["id"]
+    call("POST", f"/groups/{mixed}/members", {"userId": mix_b}, tok=tok_a)
+    call("POST", "/expenses", {
+        "groupId": mixed, "title": "Mixed dinner", "amountMinor": 30000,
+        "splitType": "EQUAL", "participantIds": [mix_a, mix_b], "paidByUserId": mix_a,
+    }, tok=tok_a)
+    call("POST", "/expenses", {
+        "groupId": None, "title": "Mixed coffee", "amountMinor": 20000,
+        "splitType": "EQUAL", "participantIds": [mix_a, mix_b], "paidByUserId": mix_a,
+    }, tok=tok_a)
+
+    # 20000 covers the whole 15000 group debt and 5000 of the 10000 coffee debt:
+    # one call, two settlement rows, one payment as far as the user is concerned.
+    call("POST", "/settlements", {
+        "payerUserId": mix_b, "paidToUserId": mix_a, "amountMinor": 20000, "method": "UPI",
+    }, tok=tok_b)
+    check(
+        "mixed payment clears the group part",
+        nets_of(call("GET", f"/groups/{mixed}/detail", tok=tok_b)) == {mix_a: 0, mix_b: 0},
+        mixed,
+    )
+    mixed_balance = {b["userId"]: b["netMinor"] for b in call("GET", "/balances", tok=tok_b)}
+    check(
+        "mixed payment leaves the peer-to-peer part to settle",
+        mixed_balance.get(mix_a, 0) == -5000,
+        mixed_balance,
+    )
+    events = [e for e in call("GET", "/activity", tok=tok_b) if e["type"] == "settlement"]
+    check(
+        "a payment split across ledgers is one activity event",
+        len(events) == 1 and events[0]["amountMinor"] == 20000,
+        events,
+    )
+    call("POST", "/settlements", {
+        "payerUserId": mix_b, "paidToUserId": mix_a, "amountMinor": 5000, "method": "UPI",
+    }, tok=tok_b)
+    check(
+        "the rest of the peer-to-peer debt settles group-free",
+        all(b["netMinor"] == 0 for b in call("GET", "/balances", tok=tok_b)),
+        call("GET", "/balances", tok=tok_b),
+    )
+
+    # ---- a payment must not be booked where the group routes it elsewhere ----
+    # Nets P -3000, A +3000, Y +4000, Q -4000 simplify to P->A and Q->Y. P also
+    # owes Y 3000 outside the group, so paying Y must stay peer-to-peer: booking
+    # it against the raw overlap would clear P's debt to A instead.
+    (routed_p, routed_a, routed_y, routed_q), (tok_rp, tok_ra, tok_ry, tok_rq) = seed_users(
+        f"route-{run_id}", ["Pia", "Arun", "Yash", "Quinn"]
+    )
+    routed = call("POST", "/groups", {"name": "Routed group"}, tok=tok_ra)["id"]
+    for member in (routed_p, routed_y, routed_q):
+        call("POST", f"/groups/{routed}/members", {"userId": member}, tok=tok_ra)
+    call("POST", "/expenses", {
+        "groupId": routed, "title": "Arun covered Pia", "amountMinor": 3000,
+        "splitType": "EQUAL", "participantIds": [routed_p], "paidByUserId": routed_a,
+    }, tok=tok_ra)
+    call("POST", "/expenses", {
+        "groupId": routed, "title": "Yash covered Quinn", "amountMinor": 4000,
+        "splitType": "EQUAL", "participantIds": [routed_q], "paidByUserId": routed_y,
+    }, tok=tok_ry)
+    call("POST", "/expenses", {
+        "groupId": None, "title": "Yash covered Pia outside", "amountMinor": 3000,
+        "splitType": "EQUAL", "participantIds": [routed_p], "paidByUserId": routed_y,
+    }, tok=tok_ry)
+    routed_detail = call("GET", f"/groups/{routed}/detail", tok=tok_rp)
+    check(
+        "group screen routes the payer's debt to a third person",
+        nets_of(routed_detail) == {routed_a: 3000, routed_p: -3000, routed_y: 4000, routed_q: -4000}
+        and {(d["fromUserId"], d["toUserId"], d["amountMinor"]) for d in routed_detail["simplifiedDebts"]}
+        == {(routed_p, routed_a, 3000), (routed_q, routed_y, 4000)},
+        routed_detail["simplifiedDebts"],
+    )
+    routed_balance = {
+        b["userId"]: b["netMinor"] for b in call("GET", "/balances", tok=tok_rp)
+        if b["netMinor"] != 0
+    }
+    check(
+        "payer owes the group creditor and the peer-to-peer payee",
+        routed_balance == {routed_a: -3000, routed_y: -3000},
+        routed_balance,
+    )
+    call("POST", "/settlements", {
+        "payerUserId": routed_p, "paidToUserId": routed_y, "amountMinor": 3000, "method": "UPI",
+    }, tok=tok_rp)
+    routed_after = call("GET", f"/groups/{routed}/detail", tok=tok_rp)
+    check(
+        "peer-to-peer payment is not booked into a group that routes it elsewhere",
+        nets_of(routed_after) == nets_of(routed_detail)
+        and call("GET", f"/settlements/groups/{routed}", tok=tok_rp) == [],
+        routed_after["balances"],
+    )
+    routed_balance = {
+        b["userId"]: b["netMinor"] for b in call("GET", "/balances", tok=tok_rp)
+        if b["netMinor"] != 0
+    }
+    check(
+        "peer-to-peer payment clears the pair that was actually paid",
+        routed_balance == {routed_a: -3000},
+        routed_balance,
+    )
+    # The transfer the group screen does show is still paid from the Settle tab.
+    call("POST", "/settlements", {
+        "payerUserId": routed_p, "paidToUserId": routed_a, "amountMinor": 3000, "method": "CASH",
+    }, tok=tok_rp)
+    routed_settled = call("GET", f"/groups/{routed}/detail", tok=tok_rp)
+    check(
+        "friend-level payment pays the transfer the group screen shows",
+        nets_of(routed_settled) == {routed_a: 0, routed_p: 0, routed_y: 4000, routed_q: -4000}
+        and {(d["fromUserId"], d["toUserId"], d["amountMinor"]) for d in routed_settled["simplifiedDebts"]}
+        == {(routed_q, routed_y, 4000)},
+        routed_settled["simplifiedDebts"],
+    )
+    check(
+        "payer is square after both payments",
+        all(b["netMinor"] == 0 for b in call("GET", "/balances", tok=tok_rp)),
+        call("GET", "/balances", tok=tok_rp),
+    )
+
+    # ---- a settled group is never reused for an unrelated peer-to-peer debt ----
+    call("POST", "/expenses", {
+        "groupId": None, "title": "Tickets", "amountMinor": 40000,
+        "splitType": "EQUAL", "participantIds": [mix_a, mix_b], "paidByUserId": mix_b,
+    }, tok=tok_b)
+    call("POST", "/settlements", {
+        "payerUserId": mix_a, "paidToUserId": mix_b, "amountMinor": 20000, "method": "BANK",
+    }, tok=tok_a)
+    check(
+        "a settled group is not reused for an unrelated debt",
+        nets_of(call("GET", f"/groups/{mixed}/detail", tok=tok_a)) == {mix_a: 0, mix_b: 0},
+        mixed,
+    )
+    check(
+        "group-free debt clears the friend balance",
+        all(b["netMinor"] == 0 for b in call("GET", "/balances", tok=tok_a)),
+        call("GET", "/balances", tok=tok_a),
+    )
+
+    for gid, tok in ((older, tok_creditor), (newer, tok_creditor), (outsider, tok_creditor),
+                     (mixed, tok_a), (routed, tok_ra)):
+        call("DELETE", f"/groups/{gid}", tok=tok)
+    check("settle attribution test groups cleaned up", True)
+
+
 def run_checks():
     run_refresh_checks()
     # ---- group + multi-payer expense ----
@@ -943,6 +1201,8 @@ def run_checks():
         call("POST", "/groups", {"name": f"Bulk group {i}"})
     all_groups = call("GET", "/groups")
     check("group summary paginates past the param cap", len(all_groups) >= 100, len(all_groups))
+
+    run_settle_attribution_checks()
 
 
 def main():

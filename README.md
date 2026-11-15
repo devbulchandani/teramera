@@ -103,7 +103,7 @@ types, edits, settlements, activity, validation) and stops the server again. Pas
 | `GET /me` · `PATCH /me` | Profile |
 | `GET/POST /groups` · `GET /groups/:id/detail` | Groups with balances & simplified debts |
 | `POST /expenses` | Create expense — `payments[]` for multi-payer, `participantIds[]` for per-expense members |
-| `POST /settlements` | Record a payment (either direction) — notifies the counterparty via FCM |
+| `POST /settlements` | Record a payment (either direction). A payment made from the friend/Settle ledger is applied to the groups that created the debt (oldest first); only a genuinely group-less remainder stays peer-to-peer — notifies the counterparty via FCM |
 | `GET /balances` | Friend-level nets for the home screen |
 | `GET /users/find?email=` | Find a user to add by email |
 | `POST /groups/:id/members` · `/join` · `/invite-email` | Membership & invites |

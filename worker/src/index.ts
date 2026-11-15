@@ -895,8 +895,23 @@ async function groupBalances(c: any, groupId: string): Promise<{ userId: string;
 }
 
 /**
- * How much `payer` still owes `payee`, in the given group or the group-less
- * pairwise ledger. Always >= 0; 0 means there is nothing to settle.
+ * How much `payer` can still pay `payee` inside one group, according to the
+ * *simplified* ledger the group screen shows. Raw nets are not enough: two
+ * positive/negative pairs can overlap (P owes 30, A is owed 30, Q owes 40,
+ * Y is owed 40) while the visible transfer is P→A and Q→Y, so a payment to Y
+ * booked against the raw overlap would reduce nobody's displayed debt.
+ */
+function settleableInGroup(net: Map<string, number>, payer: string, payee: string): number {
+    const transfer = simplifyDebts(net).transfers.find(
+        (t) => t.fromUserId === payer && t.toUserId === payee,
+    );
+    return transfer?.amountMinor ?? 0;
+}
+
+/**
+ * How much `payer` still owes `payee`, in the given group's simplified ledger
+ * or the group-less pairwise ledger. Always >= 0; 0 means there is nothing to
+ * settle.
  */
 async function outstandingBetween(
     c: any,
@@ -906,11 +921,7 @@ async function outstandingBetween(
 ): Promise<number> {
     if (groupId) {
         const balances = await groupBalances(c, groupId);
-        const net = new Map(balances.map((b) => [b.userId, b.netMinor]));
-        const payerNet = net.get(payer) ?? 0;
-        const payeeNet = net.get(payee) ?? 0;
-        // payer must be a debtor and payee a creditor; only the overlap is payable.
-        return Math.max(0, Math.min(Math.max(0, -payerNet), Math.max(0, payeeNet)));
+        return settleableInGroup(new Map(balances.map((b) => [b.userId, b.netMinor])), payer, payee);
     }
 
     // Group-less expenses and settlements are pairwise. A share the payee
@@ -952,13 +963,12 @@ async function outstandingBetween(
 }
 
 /**
- * The caller's friend balances as the group screens present them: net each
- * group, simplify to the fewest transfers, then keep only transfers involving
- * the caller. Pairwise-only math drops debtors whose debt is routed through
- * another member, so the home and settle lists disagree with the group screen.
+ * Raw per-member nets for every group the caller belongs to — positive means
+ * the member is owed money in that group, negative that they owe it. Expenses,
+ * shares and group-scoped settlements are read in three batched queries, so
+ * the cost does not grow with the number of groups.
  */
-async function simplifiedGroupFriendNet(c: any, selfId: string): Promise<Map<string, number>> {
-    const net = new Map<string, number>();
+async function groupNetsFor(c: any, selfId: string): Promise<Map<string, Map<string, number>>> {
     const expenses = await rows<Row>(
         c,
         `SELECT e.id, e.group_id, e.paid_by_user_id, e.amount_minor
@@ -1022,7 +1032,18 @@ async function simplifiedGroupFriendNet(c: any, selfId: string): Promise<Map<str
         );
     }
 
-    for (const map of groupNet.values()) {
+    return groupNet;
+}
+
+/**
+ * The caller's friend balances as the group screens present them: net each
+ * group, simplify to the fewest transfers, then keep only transfers involving
+ * the caller. Pairwise-only math drops debtors whose debt is routed through
+ * another member, so the home and settle lists disagree with the group screen.
+ */
+async function simplifiedGroupFriendNet(c: any, selfId: string): Promise<Map<string, number>> {
+    const net = new Map<string, number>();
+    for (const map of (await groupNetsFor(c, selfId)).values()) {
         const simplified = simplifyDebts(map);
         for (const transfer of simplified.transfers) {
             if (transfer.toUserId === selfId && transfer.fromUserId !== selfId) {
@@ -1036,6 +1057,57 @@ async function simplifiedGroupFriendNet(c: any, selfId: string): Promise<Map<str
                     (net.get(transfer.toUserId) ?? 0) - transfer.amountMinor,
                 );
             }
+        }
+    }
+    return net;
+}
+
+/**
+ * Every friend's net against `selfId`, exactly as GET /balances presents it:
+ * simplified per-group nets plus the group-less pairwise ledger. Positive
+ * means that friend owes `selfId`; negative means `selfId` owes them.
+ */
+async function friendNets(c: any, selfId: string): Promise<Map<string, number>> {
+    const net = await simplifiedGroupFriendNet(c, selfId);
+
+    // Group-less expenses stay pairwise. Two aggregates instead of one query
+    // per expense, so this keeps a constant number of queries.
+    const owedToMe = await rows<Row>(
+        c,
+        `SELECT s.user_id AS uid, SUM(s.share_amount_minor) AS total
+         FROM expense_shares s
+         JOIN expenses e ON e.id = s.expense_id
+         WHERE e.paid_by_user_id = ? AND s.user_id != ? AND e.group_id IS NULL
+         GROUP BY s.user_id`,
+        selfId, selfId,
+    );
+    for (const row of owedToMe) {
+        net.set(row.uid, (net.get(row.uid) ?? 0) + row.total);
+    }
+
+    const iOwe = await rows<Row>(
+        c,
+        `SELECT e.paid_by_user_id AS uid, SUM(s.share_amount_minor) AS total
+         FROM expense_shares s
+         JOIN expenses e ON e.id = s.expense_id
+         WHERE s.user_id = ? AND e.paid_by_user_id != ? AND e.group_id IS NULL
+         GROUP BY e.paid_by_user_id`,
+        selfId, selfId,
+    );
+    for (const row of iOwe) {
+        net.set(row.uid, (net.get(row.uid) ?? 0) - row.total);
+    }
+
+    const settlements = await rows<Row>(
+        c,
+        "SELECT * FROM settlements WHERE (payer_user_id = ? OR paid_to_user_id = ?) AND group_id IS NULL",
+        selfId, selfId,
+    );
+    for (const s of settlements) {
+        if (s.payer_user_id !== selfId && s.paid_to_user_id === selfId) {
+            net.set(s.payer_user_id, (net.get(s.payer_user_id) ?? 0) - s.amount_minor);
+        } else if (s.payer_user_id === selfId && s.paid_to_user_id !== selfId) {
+            net.set(s.paid_to_user_id, (net.get(s.paid_to_user_id) ?? 0) + s.amount_minor);
         }
     }
     return net;
@@ -1620,6 +1692,51 @@ app.post("/settlements/request", async (c) => {
 
 // ---------- settlements ----------
 
+/**
+ * Which groups is a friend-level payment actually paying off? Walk the groups
+ * both people share, oldest first, and take as much as the payer currently
+ * owes the payee inside each one. Payments are attributed oldest-debt-first;
+ * whatever is left belongs to the pair's group-less ledger.
+ */
+async function allocateFriendSettlement(
+    c: any,
+    payer: string,
+    payee: string,
+    amountMinor: number,
+): Promise<{ groupId: string; groupName: string; amountMinor: number }[]> {
+    const shared = await rows<Row>(
+        c,
+        `SELECT g.id, g.name
+           FROM groups g
+           JOIN memberships mp ON mp.group_id = g.id AND mp.user_id = ?
+           JOIN memberships mr ON mr.group_id = g.id AND mr.user_id = ?
+          ORDER BY g.created_at ASC, g.id ASC`,
+        payer, payee,
+    );
+    if (shared.length === 0) return [];
+
+    const nets = await groupNetsFor(c, payer);
+    const parts: { groupId: string; groupName: string; amountMinor: number }[] = [];
+    let remaining = amountMinor;
+    for (const group of shared) {
+        if (remaining <= 0) break;
+        const net = nets.get(group.id as string);
+        if (!net) continue;
+        // Only a transfer the group screen actually shows for this pair is
+        // settleable: the raw overlap can exist while the simplified ledger
+        // routes that money through someone else.
+        const part = Math.min(remaining, settleableInGroup(net, payer, payee));
+        if (part <= 0) continue;
+        parts.push({
+            groupId: group.id as string,
+            groupName: group.name as string,
+            amountMinor: part,
+        });
+        remaining -= part;
+    }
+    return parts;
+}
+
 app.post("/settlements", async (c) => {
     const userId = c.get("userId");
     const body = await c.req.json<{
@@ -1635,6 +1752,7 @@ app.post("/settlements", async (c) => {
     if (!body.method || !METHODS.has(body.method.toUpperCase())) {
         return jsonError(c, 400, "Method must be UPI, CASH or BANK");
     }
+    const method = body.method.toUpperCase();
     const payer = body.payerUserId || userId;
     if (payer === body.paidToUserId) return jsonError(c, 400, "Payer and payee must be different people");
     if (payer !== userId && body.paidToUserId !== userId) {
@@ -1655,17 +1773,55 @@ app.post("/settlements", async (c) => {
 
     // Never let a client settle more than the payer actually owes the payee.
     // Partial payments are still allowed; a zero balance is not payable at all.
-    const outstanding = await outstandingBetween(c, payer, body.paidToUserId, body.groupId ?? null);
+    // For a group-less POST the bound is the *aggregate* friend balance the
+    // Settle tab shows (group nets + peer-to-peer), not the peer-to-peer ledger
+    // alone: such a payment is spread over the groups that created the debt.
+    let outstanding: number;
+    if (body.groupId) {
+        outstanding = await outstandingBetween(c, payer, body.paidToUserId, body.groupId);
+    } else {
+        outstanding = -((await friendNets(c, payer)).get(body.paidToUserId) ?? 0);
+    }
     if (outstanding <= 0 || body.amountMinor > outstanding) {
         return jsonError(c, 400, "Amount exceeds the outstanding balance");
     }
 
-    await run(
-        c,
-        `INSERT INTO settlements (id, group_id, payer_user_id, paid_to_user_id, amount_minor, method, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        crypto.randomUUID(), body.groupId ?? null, payer, body.paidToUserId,
-        body.amountMinor, body.method.toUpperCase(), Date.now(),
+    // A payment made from the Settle tab belongs to the groups that generated
+    // the debt. Recording it against them (oldest first) is what keeps the home
+    // and group screens in agreement; only a genuinely group-less remainder
+    // stays on the peer-to-peer ledger.
+    const allocations = body.groupId
+        ? []
+        : await allocateFriendSettlement(c, payer, body.paidToUserId, body.amountMinor);
+    const allocatedMinor = allocations.reduce((acc, part) => acc + part.amountMinor, 0);
+    const remainderMinor = body.amountMinor - allocatedMinor;
+    if (!body.groupId && remainderMinor > 0) {
+        // Invariant: the bound above is group transfers + pairwise, so a
+        // remainder always fits the pairwise ledger. Keep the guard so a future
+        // change to either path cannot mint credit out of nothing.
+        const pairwise = await outstandingBetween(c, payer, body.paidToUserId, null);
+        if (remainderMinor > pairwise) {
+            return jsonError(c, 400, "Amount exceeds the outstanding balance");
+        }
+    }
+
+    // Shared timestamp keeps a split payment adjacent everywhere it is read,
+    // and lets the activity feed present it as the single payment it was.
+    const createdAt = Date.now();
+    const insertSettlement = (groupId: string | null, amountMinor: number) =>
+        c.env.DB.prepare(
+            `INSERT INTO settlements (id, group_id, payer_user_id, paid_to_user_id, amount_minor, method, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+            crypto.randomUUID(), groupId, payer, body.paidToUserId, amountMinor, method, createdAt,
+        );
+    await c.env.DB.batch(
+        body.groupId
+            ? [insertSettlement(body.groupId, body.amountMinor)]
+            : [
+                  ...allocations.map((part) => insertSettlement(part.groupId, part.amountMinor)),
+                  ...(remainderMinor > 0 ? [insertSettlement(null, remainderMinor)] : []),
+              ],
     );
 
     // Notify the *other* side of the payment (receiver when payer paid, payer when
@@ -1683,13 +1839,16 @@ app.post("/settlements", async (c) => {
             if (body.groupId) {
                 const [g] = await rows<{ name: string }>(c, "SELECT name FROM groups WHERE id = ?", body.groupId);
                 groupName = g?.name ?? null;
+            } else if (allocations.length === 1 && remainderMinor === 0) {
+                // The whole payment went to one group — say which one.
+                groupName = allocations[0].groupName;
             }
             const rupees = (body.amountMinor ?? 0) / 100;
             await pushToUsers(
                 c,
                 [receiver],
                 `${payerUser?.name ?? "Someone"} settled up`,
-                `₹${rupees.toFixed(0)}${groupName ? ` · ${groupName}` : ""} · ${body.method!.toUpperCase()}`,
+                `₹${rupees.toFixed(0)}${groupName ? ` · ${groupName}` : ""} · ${method}`,
             );
         })());
     }
@@ -1708,49 +1867,9 @@ app.get("/settlements/groups/:groupId", async (c) => {
 /** Friend-level nets across everything involving the caller. */
 app.get("/balances", async (c) => {
     const selfId = c.get("userId");
-    // Groups are simplified per group, exactly like the group detail screen.
-    const net = await simplifiedGroupFriendNet(c, selfId);
-
-    // Group-less expenses stay pairwise. Two aggregates instead of one query
-    // per expense, so /balances keeps a constant number of queries.
-    const owedToMe = await rows<Row>(
-        c,
-        `SELECT s.user_id AS uid, SUM(s.share_amount_minor) AS total
-         FROM expense_shares s
-         JOIN expenses e ON e.id = s.expense_id
-         WHERE e.paid_by_user_id = ? AND s.user_id != ? AND e.group_id IS NULL
-         GROUP BY s.user_id`,
-        selfId, selfId,
-    );
-    for (const row of owedToMe) {
-        net.set(row.uid, (net.get(row.uid) ?? 0) + row.total);
-    }
-
-    const iOwe = await rows<Row>(
-        c,
-        `SELECT e.paid_by_user_id AS uid, SUM(s.share_amount_minor) AS total
-         FROM expense_shares s
-         JOIN expenses e ON e.id = s.expense_id
-         WHERE s.user_id = ? AND e.paid_by_user_id != ? AND e.group_id IS NULL
-         GROUP BY e.paid_by_user_id`,
-        selfId, selfId,
-    );
-    for (const row of iOwe) {
-        net.set(row.uid, (net.get(row.uid) ?? 0) - row.total);
-    }
-
-    const settlements = await rows<Row>(
-        c,
-        "SELECT * FROM settlements WHERE (payer_user_id = ? OR paid_to_user_id = ?) AND group_id IS NULL",
-        selfId, selfId,
-    );
-    for (const s of settlements) {
-        if (s.payer_user_id !== selfId && s.paid_to_user_id === selfId) {
-            net.set(s.payer_user_id, (net.get(s.payer_user_id) ?? 0) - s.amount_minor);
-        } else if (s.payer_user_id === selfId && s.paid_to_user_id !== selfId) {
-            net.set(s.paid_to_user_id, (net.get(s.paid_to_user_id) ?? 0) + s.amount_minor);
-        }
-    }
+    // Groups are simplified per group, exactly like the group detail screen;
+    // group-less expenses and settlements stay pairwise.
+    const net = await friendNets(c, selfId);
 
     // batched user lookup
     const uids = [...net.keys()];
@@ -1862,9 +1981,17 @@ app.get("/activity", async (c) => {
         };
     });
 
+    // A friend-level payment can be recorded against several groups at once, so
+    // one payment is several rows sharing a timestamp. Collapse those back into
+    // the single event it was instead of listing the same payment repeatedly.
     const settlements = await rows<Row>(
         c,
-        "SELECT * FROM settlements WHERE payer_user_id = ? OR paid_to_user_id = ? ORDER BY created_at DESC LIMIT ?",
+        `SELECT MIN(id) AS id, payer_user_id, paid_to_user_id, method, created_at,
+                SUM(amount_minor) AS amount_minor
+           FROM settlements
+          WHERE payer_user_id = ? OR paid_to_user_id = ?
+          GROUP BY payer_user_id, paid_to_user_id, method, created_at
+          ORDER BY created_at DESC LIMIT ?`,
         selfId, selfId, limit,
     );
     const settlementIds = [...new Set(settlements.flatMap((s) => [s.payer_user_id, s.paid_to_user_id] as string[]))];
