@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -254,23 +255,30 @@ private fun SettleRow(entry: BalanceEntry, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .height(64.dp)
+            .heightIn(min = 64.dp)
             .clickable(onClick = onClick),
     ) {
         Avatar(initials = entry.initials, isViolet = entry.isViolet, size = 44.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(entry.name, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = entry.name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text = if (positive) "owes you" else "you owe",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
             )
         }
         Text(
             text = "₹${formatInr(kotlin.math.abs(entry.amountMinor))}",
             style = MaterialTheme.typography.titleMedium,
             color = if (positive) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
+            maxLines = 1,
         )
     }
 }
@@ -363,7 +371,7 @@ private fun SettleSheet(
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp),
+                                .heightIn(min = 48.dp),
                         ) {
                             MailIcon(tint = MaterialTheme.colorScheme.onSurface, size = 18.dp)
                             Spacer(Modifier.width(8.dp))
@@ -420,7 +428,7 @@ private fun SettleSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 16.dp)
-                        .height(56.dp),
+                        .heightIn(min = 56.dp),
                 ) {
                     Text(
                         if (upiWillLaunch) "Open UPI app & pay · ₹${formatInr(draft.amountMinor)}"
@@ -478,7 +486,16 @@ private fun KeypadRow(onKey: (Char) -> Unit, onBackspace: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { key ->
                     KeypadKey(onClick = { onKey(key.first()) }, contentDescription = key) {
-                        Text(key, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = key,
+                            style = MaterialTheme.typography.titleMedium,
+                            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                                minFontSize = 11.sp,
+                                maxFontSize = 17.sp,
+                                stepSize = 1.sp,
+                            ),
+                            maxLines = 1,
+                        )
                     }
                 }
             }
@@ -486,7 +503,16 @@ private fun KeypadRow(onKey: (Char) -> Unit, onBackspace: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Spacer(Modifier.weight(1f))
             KeypadKey(onClick = { onKey('0') }, contentDescription = "0") {
-                Text("0", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "0",
+                    style = MaterialTheme.typography.titleMedium,
+                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                        minFontSize = 11.sp,
+                        maxFontSize = 17.sp,
+                        stepSize = 1.sp,
+                    ),
+                    maxLines = 1,
+                )
             }
             KeypadKey(onClick = onBackspace, contentDescription = "Backspace") {
                 com.example.teramera.ui.components.BackspaceIcon(
@@ -507,7 +533,7 @@ private fun RowScope.KeypadKey(
     Box(
         modifier = Modifier
             .weight(1f)
-            .height(58.dp)
+            .heightIn(min = 58.dp)
             .clip(MaterialTheme.shapes.medium)
             .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)
@@ -633,7 +659,7 @@ private fun DoneStage(draft: SettleDraft, onDone: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 20.dp)
-                .height(54.dp),
+                .heightIn(min = 54.dp),
         ) {
             Text("Back to settle", style = MaterialTheme.typography.labelLarge)
         }

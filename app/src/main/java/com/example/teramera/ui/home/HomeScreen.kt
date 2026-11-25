@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -45,9 +46,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -236,16 +242,19 @@ internal fun TopBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = greetingFor(java.util.Calendar.getInstance()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = cream.copy(alpha = 0.78f),
+                    maxLines = 1,
                 )
                 Text(
                     text = state.selfName.ifEmpty { "You" },
                     style = MaterialTheme.typography.titleLarge,
                     color = cream,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Row(
@@ -383,27 +392,35 @@ private fun HeroCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = cream.copy(alpha = 0.82f),
             )
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    "₹",
-                    style = MaterialTheme.typography.displayLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.width(2.dp))
-                Text(
-                    text = formatInr(shownNet),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = cream,
-                )
+            val primary = MaterialTheme.colorScheme.primary
+            val heroAmount = remember(shownNet, primary) {
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = primary, fontSize = 0.62.em)) { append("₹") }
+                    withStyle(SpanStyle(color = cream)) { append(formatInr(shownNet)) }
+                }
             }
+            Text(
+                text = heroAmount,
+                style = MaterialTheme.typography.displayLarge,
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 26.sp,
+                    maxFontSize = 44.sp,
+                    stepSize = 2.sp,
+                ),
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 14.dp)) {
                 HeroChip(
                     label = "Owed ₹${formatInr(owedToYouMinor)}",
                     tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.weight(1f),
                 )
                 HeroChip(
                     label = "You owe ₹${formatInr(youOweMinor)}",
                     tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
                 )
             }
             if (lastSyncAt != null) {
@@ -486,14 +503,26 @@ private fun SpendSummaryCard(
 }
 
 @Composable
-private fun HeroChip(label: String, tint: Color) {
+private fun HeroChip(label: String, tint: Color, modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(CircleShape)
             .background(tint.copy(alpha = 0.18f))
             .padding(horizontal = 12.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = tint)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = tint,
+            maxLines = 1,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 9.sp,
+                maxFontSize = 12.sp,
+                stepSize = 1.sp,
+            ),
+        )
     }
 }
 

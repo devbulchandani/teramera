@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -185,11 +186,18 @@ private fun GroupCard(group: BalanceEntry, onClick: () -> Unit) {
         GroupMascot(index = group.id.hashCode(), size = 56.dp)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(group.name, style = MaterialTheme.typography.titleMedium)
             Text(
-                group.subtitle,
+                text = group.name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = group.subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
@@ -198,6 +206,7 @@ private fun GroupCard(group: BalanceEntry, onClick: () -> Unit) {
             style = MaterialTheme.typography.titleMedium,
             color = if (group.amountMinor >= 0) MaterialTheme.colorScheme.tertiary
             else MaterialTheme.colorScheme.error,
+            maxLines = 1,
         )
     }
 }

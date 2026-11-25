@@ -488,10 +488,15 @@ private fun FloatingNav(
                         Box(Modifier.scale(iconScale)) { item.icon(tint) }
                         Spacer(Modifier.height(3.dp))
                         Text(
-                            item.label,
+                            text = item.label,
                             style = MaterialTheme.typography.labelSmall,
                             color = tint,
                             maxLines = 1,
+                            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                                minFontSize = 8.sp,
+                                maxFontSize = 12.sp,
+                                stepSize = 1.sp,
+                            ),
                         )
                     }
                 }

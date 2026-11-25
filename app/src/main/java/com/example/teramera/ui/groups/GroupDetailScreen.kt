@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -143,7 +144,7 @@ fun GroupDetailScreen(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 ),
-                modifier = Modifier.height(52.dp),
+                modifier = Modifier.heightIn(min = 52.dp),
             ) { Text("Try again", style = MaterialTheme.typography.labelLarge) }
             TextButton(onClick = onBack) { Text("Back to groups") }
         }
@@ -319,7 +320,7 @@ fun GroupDetailScreen(
                     ),
                     modifier = Modifier
                         .weight(1f)
-                        .height(54.dp)
+                        .heightIn(min = 54.dp)
                         .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
                 ) { Text("Settle up", style = MaterialTheme.typography.labelLarge) }
                 Button(
@@ -331,7 +332,7 @@ fun GroupDetailScreen(
                     ),
                     modifier = Modifier
                         .weight(1f)
-                        .height(54.dp),
+                        .heightIn(min = 54.dp),
                 ) { Text("Add expense", style = MaterialTheme.typography.labelLarge) }
             }
         }
@@ -1150,7 +1151,7 @@ private fun EditExpenseDialog(
 private fun EditMemberChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .height(44.dp)
+            .heightIn(min = 48.dp)
             .clip(CircleShape)
             .background(
                 if (selected) MaterialTheme.colorScheme.primaryContainer
