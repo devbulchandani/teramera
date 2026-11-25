@@ -125,6 +125,7 @@ then open `http://localhost:8289/opendesign/`.
 
 ## Status & notes
 
+- v0.6.15 — add-expense sheet can no longer be swiped away mid-form; responsive keypad/amount/rows for small phones and large font scales; the 1,064-line screen is now host + header + three steps + shared parts
 - v0.3.4 — Google-only auth, FCM push on settlements, speed pass
 - Legacy `backend/` still contains the phone-OTP flow, but `expose-dev-otp` now defaults to `false`
 - Email invites still log to console when no SMTP/Resend key is configured; they reach mail when it is
