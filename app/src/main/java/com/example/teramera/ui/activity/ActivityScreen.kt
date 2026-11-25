@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -154,7 +156,7 @@ private fun SpendByMonthCard(spend: SpendSnapshot) {
                 val current = month.month == spend.thisMonthKey
                 Column(
                     modifier = Modifier
-                        .width(124.dp)
+                        .widthIn(min = 116.dp)
                         .clip(MaterialTheme.shapes.medium)
                         .background(
                             if (current) MaterialTheme.colorScheme.primaryContainer
@@ -172,15 +174,18 @@ private fun SpendByMonthCard(spend: SpendSnapshot) {
                         .padding(12.dp),
                 ) {
                     Text(
-                        if (current) "This month" else monthName(month),
+                        text = if (current) "This month" else monthName(month),
                         style = MaterialTheme.typography.labelMedium,
                         color = if (current) MaterialTheme.colorScheme.onPrimaryContainer
                         else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "₹${formatInr(month.spentMinor)}",
+                        text = "₹${formatInr(month.spentMinor)}",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
                         modifier = Modifier.padding(top = 2.dp),
                     )
                     Text(
@@ -270,15 +275,24 @@ private fun ExpenseRow(event: ActivityEvent.ExpenseAdded) {
         Column(Modifier.weight(1f)) {
             AnnotatedText(bold = event.payerName, rest = " added ${event.title}")
             Text(
-                "₹${formatInr(event.amountMinor)} · ${event.participantCount} " +
-                    "${if (event.participantCount == 1) "person" else "people"} · ${TimeFormat.time(event.createdAt)}",
+                text = "₹${formatInr(event.amountMinor)} · ${event.participantCount} " +
+                    "${if (event.participantCount == 1) "person" else "people"} · " +
+                    TimeFormat.time(event.createdAt),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         Column(horizontalAlignment = Alignment.End) {
             if (event.groupName != null) {
-                Text(event.groupName!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = event.groupName!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Text(
                 "your share ₹${formatInr(event.myShareMinor)}",
@@ -310,7 +324,11 @@ private fun SettlementRow(event: ActivityEvent.SettlementMade) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text("₹${formatInr(event.amountMinor)}", style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = "₹${formatInr(event.amountMinor)}",
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+        )
     }
 }
 
