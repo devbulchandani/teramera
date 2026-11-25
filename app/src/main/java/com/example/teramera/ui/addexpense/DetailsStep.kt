@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -226,7 +227,10 @@ private fun ParticipantBlock(state: AddExpenseUiState, viewModel: AddExpenseView
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (!state.membersLoading && state.draft.groupId != null) {
-            TextButton(onClick = viewModel::retryMembers) { Text("Try again") }
+            TextButton(
+                onClick = viewModel::retryMembers,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("Try again") }
         }
         return
     }
@@ -266,6 +270,7 @@ private fun ParticipantBlock(state: AddExpenseUiState, viewModel: AddExpenseView
             TextButton(
                 onClick = viewModel::addFriendByEmail,
                 enabled = !state.friendSearch.searching && state.friendSearch.query.isNotBlank(),
+                modifier = Modifier.heightIn(min = 48.dp),
             ) {
                 Text(if (state.friendSearch.searching) "Adding…" else "Add")
             }

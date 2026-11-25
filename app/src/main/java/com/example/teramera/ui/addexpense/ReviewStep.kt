@@ -163,6 +163,9 @@ internal fun ReviewStep(
 @Composable
 private fun AmountSummary(amountMinor: Long) {
     val primary = MaterialTheme.colorScheme.primary
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+        .coerceAtLeast(1f)
+    val maxSp = (44f / fontScale).coerceAtLeast(22f).sp
     val text = remember(amountMinor, primary) {
         buildAnnotatedString {
             withStyle(SpanStyle(color = primary, fontSize = 0.62.em)) { append("₹") }
@@ -173,8 +176,8 @@ private fun AmountSummary(amountMinor: Long) {
         text = text,
         style = MaterialTheme.typography.displayLarge,
         autoSize = TextAutoSize.StepBased(
-            minFontSize = 24.sp,
-            maxFontSize = 44.sp,
+            minFontSize = 22.sp,
+            maxFontSize = maxSp,
             stepSize = 2.sp,
         ),
         maxLines = 1,

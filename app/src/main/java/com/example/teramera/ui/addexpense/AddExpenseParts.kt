@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -71,7 +72,7 @@ internal fun Keypad(
                 row.forEach { key ->
                     KeypadKey(
                         onClick = { if (key == "⌫") onBackspace() else onKey(key.first()) },
-                        contentDescription = if (key == "⌫") "Backspace" else null,
+                        contentDescription = if (key == "⌫") "Backspace" else key,
                         modifier = Modifier
                             .weight(1f)
                             .height(keyHeight),
@@ -184,10 +185,10 @@ private fun SplitTile(
                     )
                 } else Modifier
             )
-            .toggleable(
-                value = selected,
+            .selectable(
+                selected = selected,
                 role = Role.RadioButton,
-                onValueChange = { onClick() },
+                onClick = onClick,
             )
             .padding(horizontal = 12.dp, vertical = 12.dp),
     ) {

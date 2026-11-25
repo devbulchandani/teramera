@@ -15,10 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
@@ -30,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -39,6 +41,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -50,9 +53,10 @@ import com.example.teramera.ui.home.formatInr
 import com.example.teramera.ui.theme.Paper100
 
 /**
- * The ink header owns the status bar and carries the one number that matters on
- * step 1. On steps 2 and 3 it shrinks to a compact summary so the form below has
- * room to breathe.
+ * The ink header carries the one number that matters on step 1 and shrinks to a
+ * compact summary on steps 2 and 3 so the form below has room to breathe. The
+ * sheet itself pads for the status bar (and any cutout), so this block starts
+ * below them and never fights the system bar icons.
  */
 @Composable
 internal fun AddExpenseHeader(
@@ -71,7 +75,6 @@ internal fun AddExpenseHeader(
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))
             .background(MaterialTheme.colorScheme.inverseSurface)
-            .statusBarsPadding()
             .padding(
                 start = 20.dp,
                 end = 20.dp,
@@ -143,7 +146,7 @@ internal fun AddExpenseHeader(
 
 /**
  * 48 dp targets. The disabled state keeps its slot so the title stays centred
- * whether or not there is a step to go back to.
+ * whether or not there is a step to go back to, and it is not announced.
  */
 @Composable
 private fun HeaderButton(
@@ -177,7 +180,12 @@ private fun HeaderButton(
 
 @Composable
 private fun ProgressPills(step: Int, modifier: Modifier = Modifier) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = "Step $step of 3"
+        },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         repeat(3) { index ->
             val active = index + 1 == step
             val width by animateDpAsState(
@@ -212,11 +220,14 @@ private fun GroupPicker(
     if (fixedGroupId != null) {
         val name = state.groups.firstOrNull { it.id == fixedGroupId }?.name
         if (name != null) {
-            InkChip(label = name, selected = true, onClick = {})
+            InkChip(label = name, selected = true, onClick = null)
         }
         return
     }
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyRow(
+        modifier = Modifier.selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         item {
             InkChip(
                 label = "No group",
@@ -235,18 +246,21 @@ private fun GroupPicker(
 }
 
 @Composable
-private fun InkChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun InkChip(label: String, selected: Boolean, onClick: (() -> Unit)?) {
     val cream = MaterialTheme.colorScheme.inverseOnSurface
+    val base = Modifier
+        .heightIn(min = 48.dp)
+        .clip(CircleShape)
+        .background(
+            if (selected) MaterialTheme.colorScheme.primary
+            else Paper100.copy(alpha = 0.12f)
+        )
     Box(
-        modifier = Modifier
-            .heightIn(min = 48.dp)
-            .clip(CircleShape)
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary
-                else Paper100.copy(alpha = 0.12f)
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = if (onClick != null) {
+            base.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+        } else {
+            base
+        }.padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -260,17 +274,19 @@ private fun InkChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * The amount is the only hero on the screen, so it is allowed to shrink to fit
- * rather than clip: auto-size runs from 56 sp down to 24 sp for long values and
- * for narrow phones with a large font scale.
+ * The amount is the only hero on the screen, so it shrinks to fit rather than
+ * clipping. The maximum is capped by the system font scale as well, so a 2×
+ * accessibility setting cannot hand the hero half of a small phone's height.
  */
 @Composable
 private fun AmountHero(
     amountText: String,
-    maxFontSize: androidx.compose.ui.unit.TextUnit,
+    maxFontSize: TextUnit,
 ) {
     val cream = MaterialTheme.colorScheme.inverseOnSurface
     val primary = MaterialTheme.colorScheme.primary
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val cappedMax = (maxFontSize.value / fontScale).coerceAtLeast(24f).sp
     val styled = remember(amountText, cream, primary) {
         buildAnnotatedString {
             withStyle(SpanStyle(color = primary, fontSize = 0.62.em)) { append("₹") }
@@ -281,8 +297,8 @@ private fun AmountHero(
         text = styled,
         style = MaterialTheme.typography.displayLarge,
         autoSize = TextAutoSize.StepBased(
-            minFontSize = 24.sp,
-            maxFontSize = maxFontSize,
+            minFontSize = 22.sp,
+            maxFontSize = cappedMax,
             stepSize = 2.sp,
         ),
         maxLines = 1,
